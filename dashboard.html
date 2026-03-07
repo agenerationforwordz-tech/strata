@@ -1,0 +1,1857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STRATA - Dashboard</title>
+<style>
+  /* === STRATA DASHBOARD - Warm dark mode. Not void-dark, not sterile-white. Alive. === */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', -apple-system, sans-serif;
+    background: #1a1b2e;
+    color: #d4d4e0;
+    min-height: 100vh;
+  }
+
+  /* --- TOP BAR --- */
+  .topbar {
+    background: linear-gradient(135deg, #252642 0%, #2d1f54 100%);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #3a3b5c;
+  }
+
+  .topbar .logo {
+    font-size: 26px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    background: linear-gradient(90deg, #818cf8, #c084fc, #e879f9);
+   -webkit-background-clip: text;
+   -webkit-text-fill-color: transparent;
+  }
+
+  .topbar .logo span {
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 1px;
+   -webkit-text-fill-color: #6b6b8a;
+  }
+
+  .topbar .status {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 13px;
+    color: #8b8ba8;
+  }
+
+  .status-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    animation: pulse 2s infinite;
+  }
+
+  .status-dot.online {
+    background: #34d399;
+    box-shadow: 0 0 10px #34d399;
+  }
+
+  .status-dot.offline {
+    background: #f87171;
+    box-shadow: 0 0 10px #f87171;
+    animation: none;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 10px #34d399; }
+    50% { opacity: 0.6; box-shadow: 0 0 20px #34d399; }
+  }
+
+  /* --- AUTH OVERLAY --- */
+  .auth-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(26, 27, 46, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .auth-overlay.hidden { display: none; }
+
+  .auth-box {
+    background: #222340;
+    border: 1px solid #3a3b5c;
+    border-radius: 20px;
+    padding: 40px;
+    max-width: 440px;
+    width: 90%;
+    text-align: center;
+  }
+
+  .auth-box h2 {
+    font-size: 24px;
+    font-weight: 800;
+    background: linear-gradient(90deg, #818cf8, #c084fc);
+   -webkit-background-clip: text;
+   -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+
+  .auth-box p {
+    color: #8b8ba8;
+    font-size: 14px;
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+
+  .auth-box input {
+    width: 100%;
+    background: #1e1f38;
+    border: 2px solid #3e3f6a;
+    border-radius: 14px;
+    padding: 14px 18px;
+    font-size: 15px;
+    color: #d4d4e0;
+    outline: none;
+    margin-bottom: 8px;
+    font-family: inherit;
+  }
+
+  .auth-box input[type="password"] {
+    font-family: monospace;
+  }
+
+  .auth-box input:focus { border-color: #818cf8; }
+
+  .auth-box .server-input {
+    font-family: 'Segoe UI', -apple-system, sans-serif;
+    margin-bottom: 12px;
+  }
+
+  .auth-box button {
+    background: linear-gradient(135deg, #818cf8, #a78bfa, #c084fc);
+    border: none;
+    border-radius: 14px;
+    padding: 14px 32px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 8px;
+    box-shadow: 0 4px 16px rgba(129, 140, 248, 0.35);
+    transition: transform 0.15s;
+  }
+
+  .auth-box button:hover { transform: translateY(-2px); }
+
+  .auth-error {
+    color: #f87171;
+    font-size: 13px;
+    margin-top: 10px;
+    min-height: 20px;
+  }
+
+  /* --- MAIN LAYOUT --- */
+  .container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px 32px;
+  }
+
+  /* --- CAPTURE THOUGHT --- */
+  .capture-section {
+    background: linear-gradient(135deg, #2a2b4a 0%, #302850 100%);
+    border-radius: 20px;
+    padding: 28px 30px;
+    margin-bottom: 22px;
+    border: 1px solid #3e3f6a;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+  }
+
+  .capture-section h3 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #c4b5fd;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .capture-section h3 .icon { font-size: 24px; }
+
+  .capture-textarea {
+    width: 100%;
+    min-height: 100px;
+    background: #1e1f38;
+    border: 2px solid #3e3f6a;
+    border-radius: 16px;
+    padding: 18px 20px;
+    font-size: 16px;
+    color: #d4d4e0;
+    font-family: inherit;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    line-height: 1.5;
+  }
+
+  .capture-textarea:focus {
+    border-color: #818cf8;
+    box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.15);
+  }
+
+  .capture-textarea::placeholder { color: #5c5c7a; }
+
+  .capture-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 14px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .capture-input {
+    background: #1e1f38;
+    border: 2px solid #3e3f6a;
+    border-radius: 14px;
+    padding: 12px 18px;
+    font-size: 14px;
+    color: #d4d4e0;
+    outline: none;
+    flex: 1;
+    min-width: 140px;
+    transition: border-color 0.3s;
+  }
+
+  .capture-input:focus { border-color: #818cf8; }
+  .capture-input::placeholder { color: #5c5c7a; }
+
+  .capture-select {
+    background: #1e1f38;
+    border: 2px solid #3e3f6a;
+    border-radius: 14px;
+    padding: 12px 18px;
+    font-size: 14px;
+    color: #d4d4e0;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .capture-btn {
+    background: linear-gradient(135deg, #818cf8, #a78bfa, #c084fc);
+    border: none;
+    border-radius: 14px;
+    padding: 14px 32px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 4px 16px rgba(129, 140, 248, 0.35);
+  }
+
+  .capture-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(129, 140, 248, 0.5);
+  }
+
+  .capture-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .capture-status {
+    font-size: 13px;
+    margin-top: 10px;
+    min-height: 20px;
+  }
+
+  .capture-status.success { color: #34d399; }
+  .capture-status.error { color: #f87171; }
+  .capture-status.warning { color: #fbbf24; }
+
+  /* --- STAT CARDS --- */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 22px;
+  }
+
+  .stat-card {
+    background: #222340;
+    border-radius: 16px;
+    padding: 20px 24px;
+    border: 1px solid #33345a;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--accent);
+  }
+
+  .stat-card:nth-child(1) { --accent: linear-gradient(90deg, #818cf8, #a78bfa); }
+  .stat-card:nth-child(2) { --accent: linear-gradient(90deg, #f472b6, #e879f9); }
+  .stat-card:nth-child(3) { --accent: linear-gradient(90deg, #34d399, #2dd4bf); }
+  .stat-card:nth-child(4) { --accent: linear-gradient(90deg, #fbbf24, #f97316); }
+
+  .stat-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #6b6b8a;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+
+  .stat-value {
+    font-size: 32px;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .stat-card:nth-child(1) .stat-value { color: #a78bfa; }
+  .stat-card:nth-child(2) .stat-value { color: #f472b6; }
+  .stat-card:nth-child(3) .stat-value { color: #34d399; }
+  .stat-card:nth-child(4) .stat-value { color: #fbbf24; }
+
+  .stat-sub {
+    font-size: 12px;
+    color: #5c5c7a;
+    margin-top: 6px;
+  }
+
+  .stat-sub .up { color: #34d399; font-weight: 600; }
+
+  /* --- SEARCH BAR --- */
+  .search-section { margin-bottom: 22px; }
+
+  .search-bar {
+    display: flex;
+    gap: 12px;
+  }
+
+  .search-wrap {
+    flex: 1;
+    position: relative;
+  }
+
+  .search-bar input {
+    width: 100%;
+    background: #222340;
+    border: 2px solid #33345a;
+    border-radius: 14px;
+    padding: 14px 40px 14px 20px;
+    font-size: 15px;
+    color: #d4d4e0;
+    outline: none;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  .search-clear {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #5c5c7a;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 6px;
+    line-height: 1;
+    border-radius: 50%;
+    display: none;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .search-clear:hover {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.1);
+  }
+
+  .search-clear.visible { display: block; }
+
+  .search-bar input:focus {
+    border-color: #818cf8;
+    box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.12);
+  }
+
+  .search-bar input::placeholder { color: #5c5c7a; }
+
+  .search-btn {
+    background: linear-gradient(135deg, #818cf8, #a78bfa);
+    border: none;
+    border-radius: 14px;
+    padding: 14px 28px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(129, 140, 248, 0.3);
+    transition: transform 0.15s;
+  }
+
+  .search-btn:hover { transform: translateY(-1px); }
+
+  /* --- TWO COLUMN LAYOUT --- */
+  .columns {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 20px;
+  }
+
+  /* --- PANELS --- */
+  .panel {
+    background: #222340;
+    border: 1px solid #33345a;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #2e2f50;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .panel-title {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #8b8ba8;
+  }
+
+  /* --- THOUGHT ITEMS --- */
+  .thought-scroll {
+    max-height: none;
+    flex: 1;
+    min-height: 400px;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+  }
+
+  .thought-scroll::-webkit-scrollbar { width: 6px; }
+  .thought-scroll::-webkit-scrollbar-track { background: #1e1f38; }
+  .thought-scroll::-webkit-scrollbar-thumb {
+    background: #4a4b7a;
+    border-radius: 3px;
+  }
+  .thought-scroll::-webkit-scrollbar-thumb:hover { background: #6366f1; }
+
+  .thought-item {
+    padding: 16px 20px;
+    border-bottom: 1px solid #2a2b48;
+    transition: background 0.2s;
+    cursor: pointer;
+  }
+
+  .thought-item:hover { background: rgba(129, 140, 248, 0.05); }
+
+  /* --- LOADING SPINNER --- */
+  .load-more {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 20px;
+    color: #6b6b8a;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .load-more.hidden { display: none; }
+
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid #3a3b5c;
+    border-top-color: #818cf8;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .load-count {
+    text-align: center;
+    padding: 8px;
+    font-size: 11px;
+    color: #4a4a68;
+    letter-spacing: 0.5px;
+  }
+
+  .thought-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  .thought-type {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 3px 10px;
+    border-radius: 8px;
+  }
+
+  .thought-type.thought { background: rgba(139,139,168,0.15); color: #a0a0be; }
+  .thought-type.decision { background: rgba(52,211,153,0.15); color: #34d399; }
+  .thought-type.insight { background: rgba(96,165,250,0.15); color: #60a5fa; }
+  .thought-type.project { background: rgba(251,191,36,0.15); color: #fbbf24; }
+  .thought-type.person { background: rgba(244,114,182,0.15); color: #f472b6; }
+  .thought-type.instruction { background: rgba(129,140,248,0.15); color: #818cf8; }
+  .thought-type.reference { background: rgba(45,212,191,0.15); color: #2dd4bf; }
+  .thought-type.session { background: rgba(148,163,184,0.15); color: #94a3b8; }
+
+  .thought-time { font-size: 12px; color: #6b6b8a; }
+
+  .thought-machine {
+    font-size: 11px;
+    color: #5c5c7a;
+    margin-left: auto;
+    background: #2a2b48;
+    padding: 2px 10px;
+    border-radius: 6px;
+  }
+
+  .thought-content {
+    font-size: 14px;
+    line-height: 1.55;
+    color: #b0b0c8;
+    display: -webkit-box;
+   -webkit-line-clamp: 2;
+   -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .thought-tags {
+    margin-top: 8px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .tag {
+    font-size: 11px;
+    padding: 3px 11px;
+    border-radius: 10px;
+    background: rgba(167, 139, 250, 0.12);
+    color: #c4b5fd;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .tag:hover {
+    background: rgba(167, 139, 250, 0.3);
+    color: #e0d5ff;
+  }
+
+  .thought-files {
+    margin-top: 6px;
+    font-size: 11px;
+    color: #818cf8;
+    font-weight: 600;
+  }
+
+  /* --- SIDEBAR --- */
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .sidebar-scroll {
+    max-height: 340px;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar { width: 5px; }
+  .sidebar-scroll::-webkit-scrollbar-track { background: #1e1f38; }
+  .sidebar-scroll::-webkit-scrollbar-thumb {
+    background: #4a4b7a;
+    border-radius: 3px;
+  }
+  .sidebar-scroll::-webkit-scrollbar-thumb:hover { background: #6366f1; }
+
+  /* --- TRENDING TAGS --- */
+  .trend-item {
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #2a2b48;
+  }
+
+  .trend-item:last-child { border-bottom: none; }
+  .trend-tag { font-size: 14px; color: #b0b0c8; font-weight: 500; cursor: pointer; transition: color 0.15s; }
+  .trend-item:hover { background: rgba(129, 140, 248, 0.06); }
+  .trend-item:hover .trend-tag { color: #c4b5fd; }
+
+  .trend-badge {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 12px;
+    border-radius: 10px;
+  }
+
+  .trend-badge.up { background: rgba(52,211,153,0.15); color: #34d399; }
+  .trend-badge.down { background: rgba(248,113,113,0.15); color: #f87171; }
+  .trend-badge.new { background: rgba(96,165,250,0.15); color: #60a5fa; }
+  .trend-badge.flat { background: rgba(139,139,168,0.1); color: #6b6b8a; }
+
+  /* --- DEVICE ACTIVITY --- */
+  .device-bar-container { padding: 14px 20px; }
+
+  .device-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .device-row:last-child { margin-bottom: 0; }
+
+  .device-name {
+    font-size: 13px;
+    color: #8b8ba8;
+    min-width: 90px;
+    text-align: right;
+    font-weight: 500;
+  }
+
+  .device-bar {
+    flex: 1;
+    height: 22px;
+    background: #2a2b48;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .device-fill {
+    height: 100%;
+    border-radius: 8px;
+    transition: width 1s ease;
+  }
+
+  /* Cycle through 4 gradient colors for device bars */
+  .device-row:nth-child(4n+1) .device-fill { background: linear-gradient(90deg, #818cf8, #a78bfa); }
+  .device-row:nth-child(4n+2) .device-fill { background: linear-gradient(90deg, #f472b6, #e879f9); }
+  .device-row:nth-child(4n+3) .device-fill { background: linear-gradient(90deg, #34d399, #2dd4bf); }
+  .device-row:nth-child(4n+0) .device-fill { background: linear-gradient(90deg, #fbbf24, #f97316); }
+
+  .device-count {
+    font-size: 13px;
+    font-weight: 700;
+    color: #b0b0c8;
+    min-width: 40px;
+  }
+
+  /* --- HOTTEST MEMORIES --- */
+  .hot-item {
+    padding: 12px 20px;
+    border-bottom: 1px solid #2a2b48;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .hot-item:last-child { border-bottom: none; }
+
+  .hot-rank {
+    font-size: 16px;
+    font-weight: 900;
+    min-width: 32px;
+    height: 32px;
+    line-height: 32px;
+    text-align: center;
+    border-radius: 10px;
+  }
+
+  .hot-item:nth-child(1) .hot-rank { background: rgba(251,191,36,0.2); color: #fbbf24; }
+  .hot-item:nth-child(2) .hot-rank { background: rgba(148,163,184,0.15); color: #94a3b8; }
+  .hot-item:nth-child(3) .hot-rank { background: rgba(244,114,182,0.15); color: #f472b6; }
+  .hot-item:nth-child(4) .hot-rank { background: rgba(129,140,248,0.15); color: #818cf8; }
+  .hot-item:nth-child(n+5) .hot-rank { background: rgba(139,139,168,0.1); color: #6b6b8a; }
+
+  .hot-preview {
+    font-size: 13px;
+    color: #8b8ba8;
+    line-height: 1.4;
+    flex: 1;
+  }
+
+  .hot-count {
+    font-size: 11px;
+    color: #6b6b8a;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+
+  /* --- EMPTY STATE --- */
+  .empty-state {
+    text-align: center;
+    padding: 60px 40px;
+  }
+
+  .empty-state .brain-icon {
+    font-size: 72px;
+    margin-bottom: 20px;
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+
+  .empty-state h3 {
+    font-size: 24px;
+    font-weight: 700;
+    color: #c4b5fd;
+    margin-bottom: 10px;
+  }
+
+  .empty-state p {
+    font-size: 15px;
+    color: #8b8ba8;
+    max-width: 440px;
+    margin: 0 auto 16px;
+    line-height: 1.65;
+  }
+
+  .empty-state .hint {
+    font-size: 13px;
+    color: #a78bfa;
+    background: rgba(167, 139, 250, 0.1);
+    display: inline-block;
+    padding: 10px 20px;
+    border-radius: 12px;
+    border: 1px solid rgba(167, 139, 250, 0.2);
+  }
+
+  /* --- FOOTER --- */
+  .footer {
+    text-align: center;
+    padding: 24px;
+    color: #4a4a68;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    margin-top: 32px;
+  }
+
+  .footer a {
+    color: #818cf8;
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  /* --- TOP BAR BUTTONS --- */
+  .topbar-btn {
+    background: none;
+    border: 1px solid #3a3b5c;
+    border-radius: 8px;
+    padding: 5px 12px;
+    font-size: 11px;
+    color: #6b6b8a;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .topbar-btn:hover {
+    border-color: #818cf8;
+    color: #c4b5fd;
+  }
+
+  .topbar-btn.logout:hover {
+    border-color: #f87171;
+    color: #f87171;
+  }
+
+  /* --- SEED PHRASE DISPLAY --- */
+  .seed-box {
+    background: #1a1b2e;
+    border: 2px solid #fbbf24;
+    border-radius: 14px;
+    padding: 24px 20px;
+    margin: 16px 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  .seed-word {
+    background: #252642;
+    border: 1px solid #3a3b5c;
+    border-radius: 8px;
+    padding: 10px 8px;
+    font-family: monospace;
+    font-size: 15px;
+    color: #fbbf24;
+    text-align: center;
+    user-select: all;
+  }
+
+  .seed-word .seed-num {
+    color: #6b6b8a;
+    font-size: 11px;
+    margin-right: 4px;
+  }
+
+  .seed-confirm-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 0;
+    padding: 14px 16px;
+    background: #1a1b2e;
+    border: 1px solid #3a3b5c;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+
+  .seed-confirm-row input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    accent-color: #818cf8;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .seed-confirm-row span {
+    color: #d4d4e0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .seed-warning {
+    color: #f87171;
+    font-size: 13px;
+    font-weight: 700;
+    margin: 10px 0;
+    line-height: 1.5;
+  }
+
+  /* --- SETTINGS OVERLAY --- */
+  .settings-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(26, 27, 46, 0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .settings-overlay.hidden { display: none; }
+
+  .settings-box {
+    background: #222340;
+    border: 1px solid #3a3b5c;
+    border-radius: 20px;
+    padding: 32px 36px;
+    max-width: 520px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .settings-box h2 {
+    font-size: 22px;
+    font-weight: 800;
+    color: #c4b5fd;
+    margin-bottom: 20px;
+  }
+
+  .settings-section {
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #2e2f50;
+  }
+
+  .settings-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+  .settings-section h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: #8b8ba8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+  }
+
+  .settings-input {
+    width: 100%;
+    background: #1e1f38;
+    border: 2px solid #3e3f6a;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 14px;
+    color: #d4d4e0;
+    outline: none;
+    margin-bottom: 8px;
+  }
+
+  .settings-input:focus { border-color: #818cf8; }
+
+  .settings-btn {
+    background: linear-gradient(135deg, #818cf8, #a78bfa);
+    border: none;
+    border-radius: 12px;
+    padding: 10px 24px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    cursor: pointer;
+    margin-top: 4px;
+    transition: transform 0.15s;
+  }
+
+  .settings-btn:hover { transform: translateY(-1px); }
+  .settings-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .settings-btn.close {
+    background: #3a3b5c;
+    width: 100%;
+    margin-top: 16px;
+  }
+
+  .settings-msg {
+    font-size: 12px;
+    margin-top: 6px;
+    min-height: 18px;
+  }
+  .settings-msg.ok { color: #34d399; }
+  .settings-msg.err { color: #f87171; }
+
+  /* --- DEVICE SESSION LIST --- */
+  .session-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #2a2b48;
+    font-size: 13px;
+  }
+  .session-item:last-child { border-bottom: none; }
+  .session-device { color: #c4b5fd; font-weight: 600; }
+  .session-time { color: #6b6b8a; font-size: 11px; }
+
+  /* --- THOUGHT DETAIL MODAL --- */
+  .detail-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(26, 27, 46, 0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .detail-overlay.hidden { display: none; }
+
+  .detail-box {
+    background: #222340;
+    border: 1px solid #3a3b5c;
+    border-radius: 20px;
+    padding: 32px 36px;
+    max-width: 700px;
+    width: 92%;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .detail-box::-webkit-scrollbar { width: 6px; }
+  .detail-box::-webkit-scrollbar-track { background: #1e1f38; }
+  .detail-box::-webkit-scrollbar-thumb { background: #4a4b7a; border-radius: 3px; }
+
+  .detail-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .detail-id {
+    font-size: 13px;
+    color: #6b6b8a;
+    font-weight: 600;
+  }
+
+  .detail-content {
+    font-size: 15px;
+    line-height: 1.7;
+    color: #d4d4e0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: #1a1b2e;
+    border: 1px solid #2e2f50;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    max-height: 45vh;
+    overflow-y: auto;
+  }
+
+  .detail-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: #6b6b8a;
+  }
+
+  .detail-meta span {
+    background: #2a2b48;
+    padding: 4px 12px;
+    border-radius: 8px;
+  }
+
+  .detail-files {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #2e2f50;
+  }
+
+  .detail-files h4 {
+    font-size: 13px;
+    font-weight: 700;
+    color: #818cf8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+
+  .file-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: #1a1b2e;
+    border: 1px solid #2e2f50;
+    border-radius: 10px;
+    margin-bottom: 6px;
+  }
+
+  .file-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .file-icon { font-size: 18px; flex-shrink: 0; }
+
+  .file-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #c4b5fd;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .file-size {
+    font-size: 11px;
+    color: #6b6b8a;
+    white-space: nowrap;
+    margin-left: 4px;
+  }
+
+  .file-download {
+    background: linear-gradient(135deg, #818cf8, #a78bfa);
+    border: none;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    cursor: pointer;
+    text-decoration: none;
+    flex-shrink: 0;
+    transition: transform 0.15s;
+  }
+
+  .file-download:hover { transform: translateY(-1px); }
+
+  .detail-close {
+    background: #3a3b5c;
+    border: none;
+    border-radius: 12px;
+    padding: 10px 24px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #d4d4e0;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 16px;
+  }
+
+  .detail-close:hover { background: #4a4b6a; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* --- RESPONSIVE --- */
+  @media (max-width: 900px) {
+    .columns { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .topbar { padding: 14px 16px; flex-wrap: wrap; gap: 10px; }
+    .container { padding: 16px; }
+  }
+
+  @media (max-width: 480px) {
+    .seed-box { grid-template-columns: repeat(2, 1fr); }
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .auth-box { padding: 28px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- AUTH OVERLAY - Swaps between: setup wizard, seed display, login, recovery -->
+<div class="auth-overlay" id="auth-overlay">
+
+  <!-- STATE: First-time setup -->
+  <div class="auth-box" id="view-setup" style="display:none">
+    <h2>Welcome to STRATA</h2>
+    <p>Create your account. This password protects the dashboard - your AI tools still use the API key.</p>
+    <input type="password" id="setup-pw" class="settings-input" placeholder="Choose a password (6+ characters)" />
+    <input type="password" id="setup-pw2" class="settings-input" placeholder="Confirm password" />
+    <input type="text" id="setup-device" class="settings-input" placeholder="Name this device (e.g. my-laptop)" />
+    <button onclick="doSetup()">Create Account</button>
+    <div class="auth-error" id="setup-error"></div>
+  </div>
+
+  <!-- STATE: Seed phrase display (shown once after setup) -->
+  <div class="auth-box" id="view-seed" style="display:none;max-width:540px">
+    <h2>Your Recovery Phrase</h2>
+    <p>Write these 12 words down on paper. This is the ONLY way to recover your account if you forget your password.</p>
+    <div class="seed-box" id="seed-display"></div>
+    <div class="seed-warning">
+      This phrase will NEVER be shown again. It cannot be retrieved later.
+      Store it somewhere safe - not on this device.
+    </div>
+    <label class="seed-confirm-row" onclick="var cb=this.querySelector('input');if(event.target!==cb){cb.checked=!cb.checked;cb.dispatchEvent(new Event('change'))}">
+      <input type="checkbox" id="seed-confirm" onchange="document.getElementById('seed-continue').disabled=!this.checked" />
+      <span>I have written down my recovery phrase</span>
+    </label>
+    <button id="seed-continue" disabled onclick="seedDone()">Continue to Dashboard</button>
+  </div>
+
+  <!-- STATE: Login -->
+  <div class="auth-box" id="view-login" style="display:none">
+    <h2>STRATA</h2>
+    <p>Enter your password to access the dashboard.</p>
+    <input type="password" id="login-pw" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()" />
+    <input type="text" id="login-device" class="settings-input" placeholder="Device name (optional)" />
+    <select id="login-remember" class="settings-input" style="color:#8b8ba8">
+      <option value="30">Remember for 30 days</option>
+      <option value="90">Remember for 90 days</option>
+      <option value="365">Remember for 1 year</option>
+      <option value="7">Remember for 7 days</option>
+    </select>
+    <button onclick="doLogin()">Login</button>
+    <div style="margin-top:12px">
+      <a href="#" onclick="showView('recover');return false" style="color:#818cf8;font-size:13px;text-decoration:none">Forgot password?</a>
+    </div>
+    <div class="auth-error" id="login-error"></div>
+  </div>
+
+  <!-- STATE: Recovery -->
+  <div class="auth-box" id="view-recover" style="display:none;max-width:520px">
+    <h2>Account Recovery</h2>
+    <p>Enter your 12-word recovery phrase and a new password.</p>
+    <textarea id="recover-seed" class="settings-input" style="min-height:80px;resize:vertical;font-family:monospace" placeholder="word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12"></textarea>
+    <input type="password" id="recover-pw" class="settings-input" placeholder="New password (6+ characters)" />
+    <input type="password" id="recover-pw2" class="settings-input" placeholder="Confirm new password" />
+    <button onclick="doRecover()">Reset Password</button>
+    <div style="margin-top:12px">
+      <a href="#" onclick="showView('login');return false" style="color:#818cf8;font-size:13px;text-decoration:none">Back to login</a>
+    </div>
+    <div class="auth-error" id="recover-error"></div>
+  </div>
+
+  <!-- STATE: Loading -->
+  <div class="auth-box" id="view-loading" style="text-align:center">
+    <h2>STRATA</h2>
+    <div class="spinner" style="margin:20px auto;width:32px;height:32px;border-width:3px"></div>
+    <p>Connecting...</p>
+  </div>
+
+</div>
+
+<!-- SETTINGS OVERLAY -->
+<div class="settings-overlay hidden" id="settings-overlay" onclick="if(event.target===this)closeSettings()">
+  <div class="settings-box">
+    <h2>Settings</h2>
+
+    <div class="settings-section">
+      <h3>This Device</h3>
+      <input type="text" id="set-device" class="settings-input" placeholder="Device name" />
+      <button class="settings-btn" onclick="doRenameDevice()">Rename Device</button>
+      <div class="settings-msg" id="set-device-msg"></div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Change Password</h3>
+      <input type="password" id="set-old-pw" class="settings-input" placeholder="Current password" />
+      <input type="password" id="set-new-pw" class="settings-input" placeholder="New password (6+ characters)" />
+      <input type="password" id="set-new-pw2" class="settings-input" placeholder="Confirm new password" />
+      <button class="settings-btn" onclick="doChangePassword()">Update Password</button>
+      <div class="settings-msg" id="set-pw-msg"></div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Connected Devices</h3>
+      <div id="set-sessions">Loading...</div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Account Recovery</h3>
+      <p style="color:#6b6b8a;font-size:13px;line-height:1.5;margin-bottom:8px">
+        If you lose your password, use your 12-word recovery phrase to reset it.
+        The phrase was shown once during setup - we don't store it and cannot retrieve it.
+      </p>
+    </div>
+
+    <button class="settings-btn close" onclick="closeSettings()">Close</button>
+  </div>
+</div>
+
+<!-- THOUGHT DETAIL MODAL - Shows full content + file attachments, like what AI sees -->
+<div class="detail-overlay hidden" id="detail-overlay" onclick="if(event.target===this)closeDetail()">
+  <div class="detail-box">
+    <div class="detail-header">
+      <span class="detail-id" id="detail-id"></span>
+      <span class="thought-type" id="detail-type"></span>
+      <span style="margin-left:auto;font-size:12px;color:#6b6b8a" id="detail-time"></span>
+    </div>
+    <div class="detail-content" id="detail-content">Loading...</div>
+    <div class="detail-meta" id="detail-meta"></div>
+    <div class="thought-tags" id="detail-tags" style="margin-bottom:8px"></div>
+    <div class="detail-files hidden" id="detail-files">
+      <h4>Attached Files</h4>
+      <div id="detail-file-list"></div>
+    </div>
+    <button class="detail-close" onclick="closeDetail()">Close</button>
+  </div>
+</div>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="logo">
+    STRATA <span>v1.0</span>
+  </div>
+  <div class="status">
+    <span class="status-dot offline" id="status-dot"></span>
+    <span id="status-text">Disconnected</span>
+    &nbsp;|&nbsp;
+    <span id="status-device"></span>
+    &nbsp;|&nbsp;
+    <span id="status-memories">0 memories</span>
+    &nbsp;|&nbsp;
+    bge-base-en-v1.5
+    &nbsp;|&nbsp;
+    <button class="topbar-btn" onclick="openSettings()">Settings</button>
+    <button class="topbar-btn logout" onclick="doLogout()">Logout</button>
+  </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="container">
+
+  <!-- CAPTURE THOUGHT -->
+  <div class="capture-section">
+    <h3><span class="icon">&#x1f4ad;</span> Capture a Thought</h3>
+    <textarea class="capture-textarea" id="capture-content" placeholder="What's on your mind? Type any idea, decision, note, or memory..."></textarea>
+    <div class="capture-row">
+      <input class="capture-input" id="capture-tags" placeholder="Tags (comma separated)" />
+      <input class="capture-input" id="capture-people" placeholder="People mentioned" />
+      <select class="capture-select" id="capture-type">
+        <option value="thought">thought</option>
+        <option value="decision">decision</option>
+        <option value="insight">insight</option>
+        <option value="project">project</option>
+        <option value="person">person note</option>
+        <option value="instruction">instruction</option>
+        <option value="reference">reference</option>
+      </select>
+      <button class="capture-btn" id="capture-btn" onclick="captureThought()">Save to Vault</button>
+    </div>
+    <div class="capture-status" id="capture-status"></div>
+  </div>
+
+  <!-- STAT CARDS -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Memories</div>
+      <div class="stat-value" id="stat-total"> -</div>
+      <div class="stat-sub" id="stat-total-sub">&nbsp;</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Unique Tags</div>
+      <div class="stat-value" id="stat-tags"> -</div>
+      <div class="stat-sub" id="stat-tags-sub">&nbsp;</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">People Tracked</div>
+      <div class="stat-value" id="stat-people"> -</div>
+      <div class="stat-sub" id="stat-people-sub">&nbsp;</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Database Size</div>
+      <div class="stat-value" id="stat-db"> -</div>
+      <div class="stat-sub" id="stat-db-sub">&nbsp;</div>
+    </div>
+  </div>
+
+  <!-- SEARCH BAR -->
+  <div class="search-section">
+    <div class="search-bar">
+      <div class="search-wrap">
+        <input type="text" id="search-input" placeholder="Search your mind... (finds by meaning, not just keywords)" onkeydown="if(event.key==='Enter')doSearch()" />
+        <button class="search-clear" id="search-clear" onclick="clearSearch()">&times;</button>
+      </div>
+      <button class="search-btn" onclick="doSearch()">Search</button>
+    </div>
+  </div>
+
+  <!-- TWO COLUMNS -->
+  <div class="columns">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title" id="feed-title">Recent Memories</span>
+        <span style="font-size: 12px; color: #6b6b8a;" id="feed-count">Loading...</span>
+      </div>
+
+      <div class="thought-scroll" id="thought-scroll">
+        <!-- Thoughts injected here by JS -->
+        <div class="load-more hidden" id="load-more">
+          <div class="spinner"></div>
+          <span>Loading...</span>
+        </div>
+        <div class="load-count" id="load-count"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT SIDEBAR -->
+    <div class="sidebar">
+
+      <!-- TRENDING TAGS -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Top Tags</span>
+          <span style="font-size: 11px; color: #6b6b8a;" id="tag-count"></span>
+        </div>
+        <div class="sidebar-scroll" id="trending-tags">
+          <!-- Tags injected here -->
+        </div>
+      </div>
+
+      <!-- DEVICE ACTIVITY -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Activity by Device</span>
+          <span style="font-size: 11px; color: #6b6b8a;" id="device-count"></span>
+        </div>
+        <div class="sidebar-scroll">
+          <div class="device-bar-container" id="device-bars">
+            <!-- Device bars injected here -->
+          </div>
+        </div>
+      </div>
+
+      <!-- HOTTEST MEMORIES -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Hottest Memories</span>
+          <span style="font-size: 11px; color: #6b6b8a;">Most accessed</span>
+        </div>
+        <div class="sidebar-scroll" id="hottest-memories">
+          <!-- Hot items injected here -->
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="footer">
+    STRATA v1.0 &mdash; Self-hosted AI memory server &mdash;
+    <a href="https://github.com/agenerationforwordz-tech/strata">GitHub</a> &mdash;
+    A Generation Forwordz Foundation &mdash;
+    Every memory is permanent
+  </div>
+
+</div>
+
+<script>
+  // STRATA DASHBOARD - Password-based auth with session tokens.
+  // AI clients still use API keys. Seed phrase recovery for forgotten passwords.
+
+  var SERVER_URL = window.location.origin;
+  var SESSION_TOKEN = '';
+  var DEVICE_NAME = '';
+  var FEED_OFFSET = 0;        // current pagination offset for infinite scroll
+  var FEED_LOADING = false;   // prevent double-loading while a fetch is in progress
+  var FEED_DONE = false;      // true when server returns fewer than 30 - no more pages
+  var FEED_MODE = 'recent';   // 'recent' = paginated feed, 'search' or 'tag' = one-shot results
+
+  function saveSession(token, device) { localStorage.setItem('strata_token', token); localStorage.setItem('strata_device', device || ''); }
+  function clearSession() { localStorage.removeItem('strata_token'); }
+  function getSavedToken() { return localStorage.getItem('strata_token') || ''; }
+  function getSavedDevice() { return localStorage.getItem('strata_device') || ''; }
+
+  function showView(name) {
+    ['setup','seed','login','recover','loading'].forEach(function(v) {
+      document.getElementById('view-' + v).style.display = (v === name) ? 'block' : 'none';
+    });
+    var saved = getSavedDevice();
+    if (saved) { var a = document.getElementById('login-device'); if (a && !a.value) a.value = saved; var b = document.getElementById('setup-device'); if (b && !b.value) b.value = saved; }
+  }
+
+  async function init() {
+    showView('loading');
+    try {
+      var savedToken = getSavedToken();
+      var headers = savedToken ? { 'Authorization': 'Bearer ' + savedToken } : {};
+      var resp = await fetch(SERVER_URL + '/api/auth/status', { headers: headers });
+      if (!resp.ok) throw new Error('unreachable');
+      var data = await resp.json();
+      if (!data.setup_complete) { showView('setup'); return; }
+      if (data.authenticated && savedToken) { SESSION_TOKEN = savedToken; DEVICE_NAME = data.device_name || getSavedDevice(); document.getElementById('auth-overlay').classList.add('hidden'); loadDashboard(); return; }
+      showView('login');
+    } catch (e) { showView('login'); document.getElementById('login-error').textContent = 'Cannot reach server. Is it running?'; }
+  }
+
+  async function doSetup() {
+    var pw = document.getElementById('setup-pw').value, pw2 = document.getElementById('setup-pw2').value;
+    var device = document.getElementById('setup-device').value.trim(), err = document.getElementById('setup-error');
+    if (!pw || pw.length < 6) { err.textContent = 'Password must be at least 6 characters.'; return; }
+    if (pw !== pw2) { err.textContent = 'Passwords do not match.'; return; }
+    err.textContent = 'Creating account...';
+    try {
+      var resp = await fetch(SERVER_URL + '/api/auth/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw, device_name: device }) });
+      var data = await resp.json();
+      if (data.status !== 'ok') { err.textContent = data.error || 'Setup failed.'; return; }
+      SESSION_TOKEN = data.token; DEVICE_NAME = device; saveSession(data.token, device);
+      renderSeedGrid(data.seed_phrase);
+      showView('seed');
+    } catch (e) { err.textContent = 'Connection failed.'; }
+  }
+
+  function seedDone() {
+    // Clear the seed phrase from DOM - it should not persist in memory after confirmation
+    document.getElementById('seed-display').innerHTML = '';
+    document.getElementById('auth-overlay').classList.add('hidden');
+    loadDashboard();
+  }
+
+  // Render seed phrase as a numbered grid of 12 words - much easier to read and write down
+  function renderSeedGrid(phrase) {
+    var words = phrase.split(' ');
+    var html = '';
+    for (var i = 0; i < words.length; i++) {
+      html += '<div class="seed-word"><span class="seed-num">' + (i + 1) + '.</span> ' + escapeHtml(words[i]) + '</div>';
+    }
+    document.getElementById('seed-display').innerHTML = html;
+  }
+
+  async function doLogin() {
+    var pw = document.getElementById('login-pw').value, device = document.getElementById('login-device').value.trim();
+    var remember = parseInt(document.getElementById('login-remember').value), err = document.getElementById('login-error');
+    if (!pw) { err.textContent = 'Enter your password.'; return; }
+    err.textContent = 'Logging in...';
+    try {
+      var resp = await fetch(SERVER_URL + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw, device_name: device, remember_days: remember }) });
+      var data = await resp.json();
+      if (data.status !== 'ok') { err.textContent = data.error || 'Login failed.'; return; }
+      SESSION_TOKEN = data.token; DEVICE_NAME = device || data.device_name || ''; saveSession(data.token, DEVICE_NAME);
+      document.getElementById('auth-overlay').classList.add('hidden'); loadDashboard();
+    } catch (e) { err.textContent = 'Connection failed.'; }
+  }
+
+  async function doRecover() {
+    var seed = document.getElementById('recover-seed').value.trim(), pw = document.getElementById('recover-pw').value;
+    var pw2 = document.getElementById('recover-pw2').value, err = document.getElementById('recover-error');
+    if (!seed) { err.textContent = 'Enter your 12-word recovery phrase.'; return; }
+    if (!pw || pw.length < 6) { err.textContent = 'Password must be at least 6 characters.'; return; }
+    if (pw !== pw2) { err.textContent = 'Passwords do not match.'; return; }
+    err.textContent = 'Recovering...';
+    try {
+      var resp = await fetch(SERVER_URL + '/api/auth/recover', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seed_phrase: seed, new_password: pw }) });
+      var data = await resp.json();
+      if (data.status !== 'ok') { err.textContent = data.error || 'Recovery failed.'; return; }
+      clearSession(); err.style.color = '#34d399'; err.textContent = 'Password reset! Redirecting to login...';
+      setTimeout(function() { err.style.color = ''; showView('login'); }, 1500);
+    } catch (e) { err.textContent = 'Connection failed.'; }
+  }
+
+  async function doLogout() {
+    try { await fetch(SERVER_URL + '/api/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + SESSION_TOKEN } }); } catch (e) {}
+    clearSession(); SESSION_TOKEN = ''; document.getElementById('auth-overlay').classList.remove('hidden'); showView('login');
+  }
+
+  function openSettings() { document.getElementById('settings-overlay').classList.remove('hidden'); document.getElementById('set-device').value = DEVICE_NAME; loadSessions(); }
+
+  function closeSettings() {
+    document.getElementById('settings-overlay').classList.add('hidden');
+    document.getElementById('set-old-pw').value = ''; document.getElementById('set-new-pw').value = ''; document.getElementById('set-new-pw2').value = '';
+    document.getElementById('set-device-msg').textContent = '';
+  }
+
+  // Rename device - server enforces uniqueness + 10-day cooldown
+  async function doRenameDevice() {
+    var nd = document.getElementById('set-device').value.trim();
+    var msg = document.getElementById('set-device-msg');
+    if (nd === DEVICE_NAME) { msg.textContent = 'Name unchanged.'; msg.className = 'settings-msg'; return; }
+    try {
+      var data = await api('/api/auth/rename-device', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_name: nd }) });
+      if (data.status === 'ok') {
+        DEVICE_NAME = nd; localStorage.setItem('strata_device', nd);
+        document.getElementById('status-device').textContent = nd || 'dashboard';
+        msg.textContent = 'Device renamed.'; msg.className = 'settings-msg ok';
+        loadSessions();
+      } else { msg.textContent = data.error || 'Rename failed.'; msg.className = 'settings-msg err'; }
+    } catch (e) { msg.textContent = 'Error: ' + e.message; msg.className = 'settings-msg err'; }
+  }
+
+  async function doChangePassword() {
+    var old_pw = document.getElementById('set-old-pw').value, new_pw = document.getElementById('set-new-pw').value;
+    var new_pw2 = document.getElementById('set-new-pw2').value, msg = document.getElementById('set-pw-msg');
+    if (!old_pw || !new_pw) { msg.textContent = 'Fill in both fields.'; msg.className = 'settings-msg err'; return; }
+    if (new_pw.length < 6) { msg.textContent = 'New password must be 6+ characters.'; msg.className = 'settings-msg err'; return; }
+    if (new_pw !== new_pw2) { msg.textContent = 'Passwords do not match.'; msg.className = 'settings-msg err'; return; }
+    try {
+      var data = await api('/api/auth/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ old_password: old_pw, new_password: new_pw }) });
+      if (data.status === 'ok') { msg.textContent = 'Password changed.'; msg.className = 'settings-msg ok'; document.getElementById('set-old-pw').value = ''; document.getElementById('set-new-pw').value = ''; document.getElementById('set-new-pw2').value = ''; }
+      else { msg.textContent = data.error || 'Failed.'; msg.className = 'settings-msg err'; }
+    } catch (e) { msg.textContent = 'Error: ' + e.message; msg.className = 'settings-msg err'; }
+  }
+
+  async function loadSessions() {
+    var c = document.getElementById('set-sessions');
+    try {
+      var data = await api('/api/auth/sessions');
+      var s = data.sessions || [];
+      if (!s.length) { c.innerHTML = '<div style="color:#6b6b8a">No active sessions.</div>'; return; }
+      c.innerHTML = s.map(function(x) { return '<div class="session-item"><span class="session-device">' + escapeHtml(x.device_name || 'Unknown') + '</span><span class="session-time">Last: ' + (x.last_used ? relativeTime(x.last_used) : 'never') + '</span></div>'; }).join('');
+    } catch (e) { c.innerHTML = '<div style="color:#f87171">Failed to load.</div>'; }
+  }
+
+  async function api(endpoint, options) {
+    options = options || {};
+    var headers = Object.assign({ 'Authorization': 'Bearer ' + SESSION_TOKEN }, options.headers || {});
+    var resp = await fetch(SERVER_URL + endpoint, Object.assign({}, options, { headers: headers }));
+    if (resp.status === 401) { clearSession(); SESSION_TOKEN = ''; document.getElementById('auth-overlay').classList.remove('hidden'); showView('login'); throw new Error('Session expired'); }
+    return resp.json();
+  }
+
+  async function loadDashboard() {
+    setStatus('online', 'Connected');
+    document.getElementById('status-device').textContent = DEVICE_NAME || 'dashboard';
+    // Reset feed state for fresh load
+    FEED_OFFSET = 0; FEED_DONE = false; FEED_MODE = 'recent';
+    try {
+      var r = await Promise.all([api('/api/stats'), api('/api/recent?limit=30&hours=8760&offset=0'), api('/api/report?days=7')]);
+      renderStats(r[0]); renderFeed(r[1], true); renderTrendingTags(r[0], r[2]); renderDeviceBars(r[0]); renderHottest(r[2]);
+    } catch (e) { if (e.message === 'Session expired') return; setStatus('offline', 'Error'); }
+  }
+
+  // Load the next page of thoughts (called by scroll listener)
+  async function loadMoreThoughts() {
+    if (FEED_LOADING || FEED_DONE || FEED_MODE !== 'recent') return;
+    FEED_LOADING = true;
+    var ld = document.getElementById('load-more');
+    ld.classList.remove('hidden');
+    try {
+      var data = await api('/api/recent?limit=30&hours=8760&offset=' + FEED_OFFSET);
+      var res = data.results || [];
+      if (res.length < 30) FEED_DONE = true; // fewer than a full page = last page
+      if (res.length) {
+        var h = ''; res.forEach(function(t) { h += renderThoughtItem(t); });
+        ld.insertAdjacentHTML('beforebegin', h);
+        FEED_OFFSET += res.length;
+        document.getElementById('feed-count').textContent = FEED_OFFSET + ' loaded';
+        document.getElementById('load-count').textContent = FEED_DONE ? 'All memories loaded' : 'Scroll for more';
+      } else {
+        FEED_DONE = true;
+        document.getElementById('load-count').textContent = 'All memories loaded';
+      }
+    } catch (e) { /* silently fail, user can scroll again */ }
+    ld.classList.add('hidden');
+    FEED_LOADING = false;
+  }
+
+  function setStatus(s, t) { document.getElementById('status-dot').className = 'status-dot ' + s; document.getElementById('status-text').textContent = t; }
+  function fmt(n) { return (n || 0).toLocaleString(); }
+
+  function relativeTime(iso) {
+    if (!iso) return '';
+    var d = Date.now() - new Date(iso).getTime(), m = Math.floor(d / 60000);
+    if (m < 1) return 'just now'; if (m < 60) return m + ' min ago';
+    var h = Math.floor(m / 60); if (h < 24) return h + 'h ago';
+    var dy = Math.floor(h / 24); if (dy === 1) return 'yesterday'; if (dy < 7) return dy + 'd ago';
+    if (dy < 30) return Math.floor(dy / 7) + 'w ago'; return Math.floor(dy / 30) + 'mo ago';
+  }
+
+  function escapeHtml(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+  function stripPrefix(c) { return c ? c.replace(/^\[SUSPICIOUS - possible injection\] /, '').replace(/^\[USER STORED NOTE\]: /, '') : ''; }
+
+  function renderStats(s) {
+    document.getElementById('stat-total').textContent = fmt(s.total_thoughts); document.getElementById('status-memories').textContent = fmt(s.total_thoughts) + ' memories';
+    var tc = Object.keys(s.top_tags || {}).length, tu = Object.values(s.top_tags || {}).reduce(function(a,b){return a+b},0);
+    document.getElementById('stat-tags').textContent = fmt(tc); document.getElementById('stat-tags-sub').textContent = fmt(tu) + ' uses';
+    var pc = Object.keys(s.top_people || {}).length, pu = Object.values(s.top_people || {}).reduce(function(a,b){return a+b},0);
+    document.getElementById('stat-people').textContent = fmt(pc); document.getElementById('stat-people-sub').textContent = fmt(pu) + ' mentions';
+    var db = s.db_size_mb || 0;
+    document.getElementById('stat-db').innerHTML = db >= 1024 ? (db/1024).toFixed(1) + '<span style="font-size:18px;color:#6b6b8a">GB</span>' : db.toFixed(1) + '<span style="font-size:18px;color:#6b6b8a">MB</span>';
+    document.getElementById('stat-db-sub').textContent = s.vault ? s.vault.total_files + ' files, ' + s.vault.total_size_human : '768-dim embeddings';
+  }
+
+  function renderFeed(recent, fresh) {
+    var sc = document.getElementById('thought-scroll'), ld = document.getElementById('load-more'), res = recent.results || [];
+    if (fresh) sc.querySelectorAll('.thought-item,.empty-state').forEach(function(e){e.remove()});
+    if (!res.length && fresh) { sc.insertAdjacentHTML('beforeend','<div class="empty-state"><div class="brain-icon">&#x1f9e0;</div><h3>Your Vault is Ready</h3><p>Capture your first thought above.</p></div>'); document.getElementById('feed-count').textContent = '0'; return; }
+    var h = ''; res.forEach(function(t){h += renderThoughtItem(t)}); ld.insertAdjacentHTML('beforebegin', h);
+    FEED_OFFSET = (fresh ? 0 : FEED_OFFSET) + res.length;
+    if (res.length < 30) FEED_DONE = true;
+    document.getElementById('feed-count').textContent = FEED_OFFSET + ' loaded';
+    document.getElementById('load-count').textContent = FEED_DONE ? 'All memories loaded' : 'Scroll for more';
+  }
+
+  function renderThoughtItem(t, sim) {
+    var c = escapeHtml(stripPrefix(t.content||'')), vt = ['thought','decision','insight','project','person','instruction','reference','session'];
+    var ty = vt.indexOf(t.type||'') >= 0 ? t.type : 'thought', ma = escapeHtml(t.machine||'unknown'), ti = relativeTime(t.created_at);
+    var tg = (t.tags||[]).map(function(x){return '<span class="tag" data-tag="'+escapeHtml(x)+'">'+escapeHtml(x)+'</span>'}).join('');
+    var fc = t.has_files ? ' data-has-files="1"' : '';
+    var sb = sim ? '<span style="font-size:11px;color:#818cf8;font-weight:600">' + (sim*100).toFixed(0) + '%</span>' : '';
+    return '<div class="thought-item" data-id="'+t.id+'" style="animation:fadeIn .3s" title="#'+t.id+'"'+fc+'><div class="thought-meta"><span class="thought-type '+ty+'">'+ty+'</span><span class="thought-time">'+ti+'</span>'+sb+'<span class="thought-machine">'+ma+'</span></div><div class="thought-content">'+c+'</div><div class="thought-tags">'+tg+'</div>'+(t.has_files?'<div class="thought-files">&#128206; Files attached</div>':'')+'</div>';
+  }
+
+  function renderTrendingTags(s, rpt) {
+    var el = document.getElementById('trending-tags'), tt = s.top_tags||{}, ri = (rpt.trending&&rpt.trending.rising)||[], dl = (rpt.trending&&rpt.trending.declining)||[];
+    var tm = {}; ri.forEach(function(r){tm[r.tag]={d:r.change==='new'?'new':'up'}}); dl.forEach(function(d){tm[d.tag]={d:'down'}});
+    var en = Object.entries(tt).sort(function(a,b){return b[1]-a[1]});
+    document.getElementById('tag-count').textContent = en.length + ' tags';
+    if (!en.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#6b6b8a">No tags yet</div>'; return; }
+    var h = ''; en.forEach(function(e){ var t = tm[e[0].toLowerCase()], cls = t ? t.d : 'flat', txt = fmt(e[1]) + (t ? (t.d==='new'?' NEW':t.d==='up'?' &#9650;':' &#9660;') : '');
+      h += '<div class="trend-item" data-tag="'+escapeHtml(e[0])+'"><span class="trend-tag">'+escapeHtml(e[0])+'</span><span class="trend-badge '+cls+'">'+txt+'</span></div>';
+    }); el.innerHTML = h;
+  }
+
+  function renderDeviceBars(s) {
+    var el = document.getElementById('device-bars'), m = s.by_machine||{}, en = Object.entries(m).sort(function(a,b){return b[1]-a[1]});
+    document.getElementById('device-count').textContent = en.length + ' sources';
+    if (!en.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#6b6b8a">No activity</div>'; return; }
+    var mx = en[0][1], h = ''; en.forEach(function(e){ var p = Math.max(1,Math.round(e[1]/mx*100));
+      h += '<div class="device-row"><span class="device-name">'+escapeHtml(e[0])+'</span><div class="device-bar"><div class="device-fill" style="width:'+p+'%"></div></div><span class="device-count">'+fmt(e[1])+'</span></div>';
+    }); el.innerHTML = h;
+  }
+
+  function renderHottest(rpt) {
+    var el = document.getElementById('hottest-memories'), ht = rpt.hottest_memories||[];
+    if (!ht.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#6b6b8a">No accessed memories yet</div>'; return; }
+    var h = ''; ht.forEach(function(x,i){ h += '<div class="hot-item"><span class="hot-rank">'+(i+1)+'</span><span class="hot-preview">'+escapeHtml(stripPrefix(x.preview||''))+'</span><span class="hot-count">'+fmt(x.access_count)+' hits</span></div>'; });
+    el.innerHTML = h;
+  }
+
+  async function captureThought() {
+    var ct = document.getElementById('capture-content').value.trim(), tr = document.getElementById('capture-tags').value.trim();
+    var pr = document.getElementById('capture-people').value.trim(), ty = document.getElementById('capture-type').value;
+    var st = document.getElementById('capture-status'), btn = document.getElementById('capture-btn');
+    if (!ct) { st.className = 'capture-status error'; st.textContent = 'Write something first!'; return; }
+    btn.disabled = true; st.className = 'capture-status'; st.textContent = 'Saving...';
+    var tags = tr ? tr.split(',').map(function(t){return t.trim()}).filter(Boolean) : [];
+    var people = pr ? pr.split(',').map(function(p){return p.trim()}).filter(Boolean) : [];
+    try {
+      var data = await api('/api/capture', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({content:ct,type:ty,tags:tags,people:people,source:'dashboard',machine:DEVICE_NAME||'dashboard',trigger:'manual'}) });
+      if (data.status==='ok') { st.className='capture-status success'; st.textContent='Saved #'+data.thought_id; document.getElementById('capture-content').value=''; document.getElementById('capture-tags').value=''; document.getElementById('capture-people').value=''; setTimeout(loadDashboard,500); }
+      else if (data.status==='duplicate') { st.className='capture-status warning'; st.textContent='Duplicate: '+data.message; }
+      else { st.className='capture-status error'; st.textContent=data.error||'Error'; }
+    } catch(e) { st.className='capture-status error'; st.textContent=e.message; }
+    btn.disabled = false;
+  }
+
+  // Search by tag - called when clicking any tag in the feed or sidebar
+  async function searchByTag(tag) {
+    FEED_MODE = 'tag'; FEED_DONE = true; // disable infinite scroll for tag results
+    // Put the tag in the search bar so the user sees what's filtered
+    document.getElementById('search-input').value = '#' + tag;
+    document.getElementById('search-clear').className = 'search-clear visible';
+    document.getElementById('feed-title').textContent = 'Tag: ' + tag;
+    document.getElementById('feed-count').textContent = 'Searching...';
+    // Scroll the feed into view so they see results immediately
+    document.getElementById('feed-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    try {
+      var data = await api('/api/search/tag', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tag:tag,limit:50})});
+      var res = data.results||[], sc = document.getElementById('thought-scroll');
+      sc.querySelectorAll('.thought-item,.empty-state').forEach(function(e){e.remove()});
+      if (!res.length) { sc.insertAdjacentHTML('afterbegin','<div style="padding:40px;text-align:center;color:#6b6b8a">No thoughts tagged "'+escapeHtml(tag)+'"</div>'); document.getElementById('feed-count').textContent='0 results'; return; }
+      var h=''; res.forEach(function(r){h+=renderThoughtItem(r)});
+      document.getElementById('load-more').insertAdjacentHTML('beforebegin',h); document.getElementById('feed-count').textContent=res.length+' tagged'; document.getElementById('load-count').textContent='';
+    } catch(e) { document.getElementById('feed-count').textContent='Tag search failed'; }
+  }
+
+  async function doSearch() {
+    var q = document.getElementById('search-input').value.trim(); if (!q) return;
+    // If the user typed #tagname, do a tag search instead of semantic search
+    if (q.startsWith('#') && q.length > 1) { searchByTag(q.substring(1)); return; }
+    FEED_MODE = 'search'; FEED_DONE = true; // disable infinite scroll for search results
+    document.getElementById('feed-title').textContent = 'Search Results'; document.getElementById('feed-count').textContent = 'Searching...';
+    document.getElementById('feed-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    try {
+      var data = await api('/api/search', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,limit:20})});
+      var res = data.results||[], sc = document.getElementById('thought-scroll');
+      sc.querySelectorAll('.thought-item,.empty-state').forEach(function(e){e.remove()});
+      if (!res.length) { sc.insertAdjacentHTML('afterbegin','<div style="padding:40px;text-align:center;color:#6b6b8a">No results for "'+escapeHtml(q)+'"</div>'); document.getElementById('feed-count').textContent='0 results'; return; }
+      var h=''; res.forEach(function(r){h+=renderThoughtItem(r,r.similarity)});
+      document.getElementById('load-more').insertAdjacentHTML('beforebegin',h); document.getElementById('feed-count').textContent=res.length+' results'; document.getElementById('load-count').textContent='';
+    } catch(e) { document.getElementById('feed-count').textContent='Search failed'; }
+  }
+
+  document.getElementById('search-input').addEventListener('input', function() {
+    document.getElementById('search-clear').className = this.value ? 'search-clear visible' : 'search-clear';
+    if (!this.value) { document.getElementById('feed-title').textContent='Recent Memories'; loadDashboard(); }
+  });
+
+  function clearSearch() {
+    document.getElementById('search-input').value = '';
+    document.getElementById('search-clear').className = 'search-clear';
+    document.getElementById('feed-title').textContent = 'Recent Memories';
+    loadDashboard();
+  }
+
+  // Infinite scroll - when user scrolls near the bottom of the feed, load the next 30
+  document.getElementById('thought-scroll').addEventListener('scroll', function() {
+    if (FEED_MODE !== 'recent' || FEED_DONE || FEED_LOADING) return;
+    if (this.scrollHeight - this.scrollTop - this.clientHeight < 200) {
+      loadMoreThoughts();
+    }
+  });
+
+  // Event delegation for tag clicks and thought clicks - no inline onclick, no XSS risk
+  document.addEventListener('click', function(e) {
+    // Tag click - data-tag attribute on .tag or .trend-item elements
+    var tagEl = e.target.closest('[data-tag]');
+    if (tagEl) { e.stopPropagation(); searchByTag(tagEl.getAttribute('data-tag')); return; }
+
+    // Thought click - data-id attribute on .thought-item elements (but not if clicking a tag inside it)
+    var thoughtEl = e.target.closest('.thought-item[data-id]');
+    if (thoughtEl) { openThought(parseInt(thoughtEl.getAttribute('data-id'))); }
+  });
+
+  // Open a thought's full detail view - same data the AI sees
+  async function openThought(id) {
+    var overlay = document.getElementById('detail-overlay');
+    overlay.classList.remove('hidden');
+    document.getElementById('detail-content').textContent = 'Loading...';
+    document.getElementById('detail-tags').innerHTML = '';
+    document.getElementById('detail-meta').innerHTML = '';
+    document.getElementById('detail-files').classList.add('hidden');
+
+    try {
+      var data = await api('/api/thought/' + id);
+      if (data.status !== 'ok' || !data.thought) { document.getElementById('detail-content').textContent = 'Failed to load thought.'; return; }
+      var t = data.thought;
+
+      document.getElementById('detail-id').textContent = '#' + t.id;
+      var vt = ['thought','decision','insight','project','person','instruction','reference','session'];
+      var ty = vt.indexOf(t.type||'') >= 0 ? t.type : 'thought';
+      var typeEl = document.getElementById('detail-type');
+      typeEl.textContent = ty; typeEl.className = 'thought-type ' + ty;
+      document.getElementById('detail-time').textContent = relativeTime(t.created_at);
+
+      // Full content - no truncation, pre-wrapped so formatting is preserved
+      var content = stripPrefix(t.content || '');
+      document.getElementById('detail-content').textContent = content;
+
+      // Meta info
+      var meta = '';
+      meta += '<span>Source: ' + escapeHtml(t.source || 'unknown') + '</span>';
+      meta += '<span>Device: ' + escapeHtml(t.machine || 'unknown') + '</span>';
+      if (t.access_count) meta += '<span>Accessed: ' + fmt(t.access_count) + ' times</span>';
+      if (t.people && t.people.length) meta += '<span>People: ' + t.people.map(escapeHtml).join(', ') + '</span>';
+      document.getElementById('detail-meta').innerHTML = meta;
+
+      // Tags - clickable, same data-tag pattern
+      var tags = (t.tags || []).map(function(x) { return '<span class="tag" data-tag="' + escapeHtml(x) + '">' + escapeHtml(x) + '</span>'; }).join('');
+      document.getElementById('detail-tags').innerHTML = tags;
+
+      // File attachments - show filenames, sizes, and download links
+      var files = t.attachments || [];
+      if (files.length) {
+        document.getElementById('detail-files').classList.remove('hidden');
+        var fh = '';
+        files.forEach(function(f) {
+          var size = f.file_size ? formatFileSize(f.file_size) : '';
+          var icon = getFileIcon(f.filename || '');
+          var dl = SERVER_URL + '/api/vault/file/' + t.id + '/' + encodeURIComponent(f.filename);
+          fh += '<div class="file-item">';
+          fh += '<div class="file-info"><span class="file-icon">' + icon + '</span>';
+          fh += '<span class="file-name">' + escapeHtml(f.filename) + '</span>';
+          fh += '<span class="file-size">' + size + '</span></div>';
+          fh += '<a class="file-download" href="' + dl + '" target="_blank" onclick="event.stopPropagation()">Download</a>';
+          fh += '</div>';
+        });
+        document.getElementById('detail-file-list').innerHTML = fh;
+      }
+    } catch (e) {
+      document.getElementById('detail-content').textContent = 'Error loading thought: ' + e.message;
+    }
+  }
+
+  function closeDetail() { document.getElementById('detail-overlay').classList.add('hidden'); }
+
+  function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+    return (bytes / 1073741824).toFixed(1) + ' GB';
+  }
+
+  function getFileIcon(name) {
+    var ext = (name.split('.').pop() || '').toLowerCase();
+    if (['py','js','ts','html','css','sh','json','yaml','yml','toml','md','txt','csv','xml','sql','rb','go','rs','java','c','cpp','h'].indexOf(ext) >= 0) return '&#128196;';
+    if (['jpg','jpeg','png','gif','svg','webp','bmp','ico'].indexOf(ext) >= 0) return '&#128247;';
+    if (['zip','tar','gz','rar','7z'].indexOf(ext) >= 0) return '&#128230;';
+    if (['pdf'].indexOf(ext) >= 0) return '&#128213;';
+    if (['mp3','wav','flac','ogg','m4a'].indexOf(ext) >= 0) return '&#127925;';
+    if (['mp4','mkv','avi','mov','webm'].indexOf(ext) >= 0) return '&#127910;';
+    return '&#128462;';
+  }
+
+  init();
+</script>
+</body>
+</html>
+

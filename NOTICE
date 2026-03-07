@@ -1,0 +1,20 @@
+STRATA - Self-Hosted AI Memory Server
+Copyright (c) 2026 A Generation Forwordz Foundation
+Created by Christian Mitchell
+
+This project is licensed under the PolyForm Noncommercial License 1.0.0.
+See LICENSE file for full terms.
+
+Original repository: https://github.com/agenerationforwordz-tech/strata
+
+If you found this code useful, please star the repo and keep the attribution.
+If you're building something cool with it, we'd love to hear about it.
+
+---
+
+Third-party dependencies:
+- fastembed (Apache 2.0) - ONNX embedding inference
+- numpy (BSD 3-Clause) - vector math
+- mcp (MIT) - Model Context Protocol SDK
+- uvicorn (BSD 3-Clause) - ASGI server
+- starlette (BSD 3-Clause) - ASGI framework
