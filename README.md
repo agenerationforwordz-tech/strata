@@ -130,7 +130,7 @@ All in `config.py`. Override with environment variables:
 | `STRATA_VAULT_DIR` | `./data/vault` | File vault location |
 | `STRATA_AUTH_ENABLED` | `true` | Kill switch for auth (don't) |
 
-## The tools (18 total)
+## The tools (16 core + extensions)
 
 ### Memory
 | Tool | What it does |
@@ -141,14 +141,14 @@ All in `config.py`. Override with environment variables:
 | `search_by_tag` | Filter by tag |
 | `search_by_person` | Filter by person mentioned |
 | `search_advanced` | Stack filters: tag + type + date + machine |
-| `get_relevant_context` | Smart search - deduped and grouped by type |
+| `get_relevant_context` | Smart search - deduped and grouped by type *(extension)* |
 | `find_related` | "More like this" for a specific thought |
 | `list_recent` | What got captured recently |
 | `get_thought` | View one thought (includes its file attachments) |
 | `update_thought` | Edit a thought (re-embeds automatically) |
 | `delete_thought` | Remove a thought + vault files (admin key required) |
 | `get_stats` | Database stats and vault usage |
-| `generate_report` | Trend report - what's rising, what's declining |
+| `generate_report` | Trend report - what's rising, what's declining *(extension)* |
 
 ### File vault
 | Tool | What it does |
@@ -275,11 +275,21 @@ Minimum specs: any machine with 2GB RAM, 2GB free disk, and Python 3.10+.
 - No eval/exec anywhere in the codebase
 - Zero additional dependencies - auth uses only Python standard library
 
+## Extensions
+
+STRATA supports an optional `extensions.py` file that registers additional MCP tools and REST endpoints. This is how you add custom functionality to your deployment without modifying the core server.
+
+If `extensions.py` is present in the project directory, the server automatically loads it at startup. If it's missing, the server runs perfectly fine with the 16 core tools.
+
+Tools marked *(extension)* in the table above are available through extensions. They're documented so you know what's possible, but the implementation isn't included in this repo. Create your own `extensions.py` with a `register_extensions()` function to add custom tools.
+
 ## License
 
 PolyForm Noncommercial License 1.0.0. Copyright (c) 2026 A Generation Forwordz Foundation.
 
-Use it, improve it, share it, learn from it. Just keep it free and give credit. Do not sell it.
+STRATA is source-available software. Use it, improve it, share it, learn from it. Just keep it free and give credit. Do not sell it.
+
+**For commercial licensing inquiries, contact A Generation Forwordz Foundation.**
 
 See [LICENSE](LICENSE) for details.
 

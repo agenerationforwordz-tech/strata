@@ -29,3 +29,6 @@ Thumbs.db
 
 # fastembed model cache
 .cache/
+
+# Private extensions (agent orchestration layer - not published)
+extensions.py

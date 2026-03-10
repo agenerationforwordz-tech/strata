@@ -687,80 +687,8 @@ def search_by_person(person: str, limit: int = 20) -> str:
     return json.dumps(results, indent=2, default=str)
 
 
-@mcp.tool()
-def get_relevant_context(topic: str, limit: int = 10) -> str:
-    """Get a curated context bundle for a topic - the smart search.
-
-    Unlike raw semantic_search, this tool:
-    1. Searches for the topic semantically
-    2. Removes near-duplicate results (>0.90 similarity to each other)
-    3. Groups results by type (decisions first, then insights, then projects, etc.)
-    4. Returns a clean, ready-to-use context bundle
-
-    This is the tool to use when starting work on a project or topic
-    and you want everything relevant without duplicates or noise.
-
-    Args:
-        topic: What you need context about, in natural language.
-               E.g. "CarPi HUD project" or "Amazon Return Tracker security"
-        limit: Max results to return after dedup (default 10)
-
-    Returns:
-        JSON string with grouped, deduplicated results
-    """
-    if limit < 1:
-        limit = 10
-    limit = min(limit, MAX_SEARCH_LIMIT)  # Cap to prevent OOM
-    if len(topic) > 5000:
-        return "Topic too long (max 5000 characters)."
-
-    # Fetch more than we need - we'll trim after dedup
-    query_embedding = embedder.embed_text(topic)
-    raw_results = db.search_similar(query_embedding, limit=limit * 2)
-
-    if not raw_results:
-        return f"No context found for '{topic}'."
-
-    # DEDUP PASS - remove results that are too similar to each other
-    # This catches the case where a README and its migrated memory entry
-    # both show up as separate results with nearly identical content
-    deduped = []
-    for result in raw_results:
-        is_dupe = False
-        for kept in deduped:
-            # Quick content-length-based heuristic: if two results share
-            # the first 200 chars, they're probably the same document
-            if (result["content"][:200] == kept["content"][:200]):
-                is_dupe = True
-                break
-        if not is_dupe:
-            deduped.append(result)
-
-    # Trim to requested limit
-    deduped = deduped[:limit]
-
-    # GROUP BY TYPE - decisions and insights first (most actionable),
-    # then projects, then sessions, then everything else
-    type_priority = {
-        "decision": 0, "insight": 1, "instruction": 2,
-        "project": 3, "reference": 4, "session": 5,
-        "person": 6, "thought": 7,
-    }
-    deduped.sort(key=lambda r: (type_priority.get(r["type"], 99), -r["similarity"]))
-
-    # Track access
-    db.record_access([r["id"] for r in deduped])
-
-    # Build the response - include a summary header
-    sanitize_results(deduped)
-    response = {
-        "topic": topic,
-        "total_found": len(raw_results),
-        "after_dedup": len(deduped),
-        "results": deduped,
-    }
-
-    return json.dumps(response, indent=2, default=str)
+# get_relevant_context - available via extensions.py (not included in public repo)
+# See README for details on the extension system.
 
 
 # ============================================================
@@ -934,35 +862,8 @@ def search_advanced(
     return json.dumps(results, indent=2, default=str)
 
 
-@mcp.tool()
-def generate_report(days: int = 7) -> str:
-    """Generate a trend report for your memory activity.
-
-    Compares the last N days against the previous N days to show:
-   - How many thoughts were captured (and the change %)
-   - Rising tags (topics you're thinking about MORE)
-   - Declining tags (topics fading from focus)
-   - Activity breakdown by machine and source
-   - Your hottest memories (most frequently accessed)
-
-    IMPORTANT: This is purely analytical. Nothing gets archived,
-    decayed, or deleted. Every memory is permanent and valuable.
-    Your smallest thought might be your biggest breakthrough.
-
-    Args:
-        days: Number of days for the current period (default 7).
-              The previous period is the same length, ending where
-              the current period starts.
-
-    Returns:
-        JSON string with the full trend report
-    """
-    if days < 1:
-        days = 7
-    days = min(days, 365)  # Cap at 1 year
-
-    report = db.generate_report(days=days)
-    return json.dumps(report, indent=2, default=str)
+# generate_report - available via extensions.py (not included in public repo)
+# The /api/report REST endpoint below still works for the dashboard.
 
 
 # ============================================================
@@ -2236,6 +2137,32 @@ for i, route in enumerate(custom_routes):
 # The middleware intercepts /.well-known/* and /register before they
 # reach Starlette, guaranteeing JSON 404 responses for OAuth discovery.
 app = OAuthBypassMiddleware(mcp_app)
+
+
+# ============================================================
+# EXTENSIONS — Private agent orchestration layer (optional)
+# ============================================================
+# If extensions.py is present, additional MCP tools and REST
+# endpoints are registered. If it's missing (like on a fresh
+# clone from GitHub), the server runs fine with just the core
+# tools above. This is the "Option B" architecture — public
+# core in server.py, private agent layer in extensions.py.
+try:
+    from extensions import register_extensions
+    register_extensions(
+        mcp, mcp_app,
+        db=db, embedder=embedder, json=json,
+        sanitize_results=sanitize_results,
+        sanitize_for_ai=sanitize_for_ai,
+        check_auth=check_auth,
+    )
+    print("[strata] Extensions loaded — private agent tools active.")
+except ImportError:
+    # No extensions.py found — that's fine, core tools are sufficient.
+    print("[strata] No extensions found — running public toolset only.")
+except Exception as e:
+    # Extensions exist but failed to load — log it but don't crash.
+    print(f"[strata] WARNING: Extensions failed to load: {e}")
 
 
 if __name__ == "__main__":
