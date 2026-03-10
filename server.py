@@ -1815,12 +1815,10 @@ async def auth_setup(request):
             status_code=400,
         )
 
-    # Enforce unique device names across active sessions
+    # If device name already taken during setup, just clear it — setup only runs once
+    # and shouldn't block on stale session data
     if device_name and auth.is_device_name_taken(device_name):
-        return JSONResponse(
-            {"status": "error", "error": f"Device name '{device_name}' is already in use."},
-            status_code=400,
-        )
+        auth.refresh_session_by_device(device_name, 1)  # clears old session
 
     seed_phrase, error = auth.setup_account(password, device_name)
     if error:
@@ -1873,16 +1871,29 @@ async def auth_login(request):
 
     user = auth.login(password)
     if not user:
+        # Record failed login attempt (no user_id since auth failed)
+        ip = request.client.host if request.client else ""
+        ua = request.headers.get("user-agent", "")
+        auth.record_login(None, device_name or "unknown", ip, ua, success=False)
         return JSONResponse({"status": "error", "error": "Invalid password."}, status_code=401)
 
-    # Enforce unique device names across active sessions
-    if device_name and auth.is_device_name_taken(device_name):
-        return JSONResponse(
-            {"status": "error", "error": f"Device name '{device_name}' is already in use. Pick a different name."},
-            status_code=400,
-        )
+    # Auto-detect device name from User-Agent if not provided.
+    # Users shouldn't have to name their device — we figure it out.
+    if not device_name:
+        ua = request.headers.get("user-agent", "")
+        device_name = auth.parse_user_agent(ua)
 
-    token = auth.create_session(user["id"], device_name, days=remember)
+    # If this device name already has an active session, refresh it
+    # instead of rejecting — same user, same device, new token.
+    if auth.is_device_name_taken(device_name):
+        token = auth.refresh_session_by_device(device_name, user["id"], days=remember)
+    else:
+        token = auth.create_session(user["id"], device_name, days=remember)
+
+    # Record successful login with IP and user-agent
+    ip = request.client.host if request.client else ""
+    ua = request.headers.get("user-agent", "")
+    auth.record_login(user["id"], device_name, ip, ua, success=True)
 
     return JSONResponse({
         "status": "ok",
@@ -2007,6 +2018,67 @@ async def auth_sessions(request):
 
     sessions = auth.get_active_sessions()
     return JSONResponse({"status": "ok", "sessions": sessions})
+
+
+async def auth_login_history(request):
+    """Get login history — every login attempt with device, IP, and timestamp.
+
+    GET /api/auth/history?limit=50
+
+    The account owner can see who accessed their dashboard and when,
+    even if they didn't post anything. Failed logins show too.
+    Requires a valid session token.
+    """
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer ") or not auth.validate_session(auth_header[7:]):
+        return JSONResponse({"status": "error", "error": "Not authenticated."}, status_code=401)
+
+    try:
+        limit = min(int(request.query_params.get("limit", 50)), 200)
+    except (ValueError, TypeError):
+        limit = 50
+
+    history = auth.get_login_history(limit=limit)
+    return JSONResponse({"status": "ok", "history": history})
+
+
+async def auth_revoke_session(request):
+    """Revoke (kick off) a session by its ID. Admin-only — you must be
+    logged in to revoke other sessions.
+
+    POST /api/auth/revoke
+    {
+        "session_id": 5
+    }
+
+    The owner can remove anyone from their dashboard. The revoked device
+    will be logged out on their next request.
+    """
+    auth_header = request.headers.get("authorization", "")
+    current_session = auth.validate_session(auth_header[7:]) if auth_header.startswith("Bearer ") else None
+    if not current_session:
+        return JSONResponse({"status": "error", "error": "Not authenticated."}, status_code=401)
+
+    size_fail = _check_auth_body_size(request)
+    if size_fail:
+        return size_fail
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"status": "error", "error": "Invalid JSON"}, status_code=400)
+
+    session_id = data.get("session_id")
+    if not session_id:
+        return JSONResponse({"status": "error", "error": "session_id required."}, status_code=400)
+
+    # Don't let the user revoke their own current session (use logout for that)
+    if session_id == current_session.get("id"):
+        return JSONResponse({"status": "error", "error": "Can't revoke your own session. Use logout instead."}, status_code=400)
+
+    success, error = auth.revoke_session(session_id)
+    if success:
+        return JSONResponse({"status": "ok", "message": "Session revoked."})
+    return JSONResponse({"status": "error", "error": error}, status_code=400)
 
 
 async def auth_rename_device(request):
@@ -2152,6 +2224,8 @@ custom_routes = [
     Route("/api/auth/recover", auth_recover, methods=["POST"]),
     Route("/api/auth/logout", auth_logout, methods=["POST"]),
     Route("/api/auth/sessions", auth_sessions, methods=["GET"]),
+    Route("/api/auth/history", auth_login_history, methods=["GET"]),
+    Route("/api/auth/revoke", auth_revoke_session, methods=["POST"]),
     Route("/api/auth/rename-device", auth_rename_device, methods=["POST"]),
     Route("/dashboard", serve_dashboard),
 ]

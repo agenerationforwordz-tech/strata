@@ -77,7 +77,7 @@ def _get_db():
 
 
 def init_auth_tables():
-    """Create users and sessions tables if they don't exist.
+    """Create users, sessions, and login_history tables if they don't exist.
     Called once at server startup alongside db.init_db()."""
     conn = _get_db()
     try:
@@ -105,6 +105,20 @@ def init_auth_tables():
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
+        # Login history — tracks every login (successful or failed) with
+        # device info, IP, and timestamp. The account owner can see who
+        # accessed their dashboard and when, even if they didn't post.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS login_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                device_name TEXT DEFAULT '',
+                ip_address TEXT DEFAULT '',
+                user_agent TEXT DEFAULT '',
+                success INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         # Migration: add name_changed_at if upgrading from older schema
         try:
             conn.execute("ALTER TABLE sessions ADD COLUMN name_changed_at TIMESTAMP")
@@ -112,6 +126,7 @@ def init_auth_tables():
             pass  # column already exists
         # Index on token for fast session lookups (every API call checks this)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_login_history_created ON login_history(created_at)")
         conn.commit()
     finally:
         conn.close()
@@ -325,12 +340,12 @@ def delete_session(token):
 
 
 def get_active_sessions():
-    """List all active (non-expired) sessions.
-    Used by the settings page to show connected devices."""
+    """List all active (non-expired) sessions with their IDs.
+    Used by settings page to show connected devices + revoke buttons."""
     conn = _get_db()
     try:
         rows = conn.execute(
-            """SELECT device_name, created_at, last_used, expires_at, remember_days
+            """SELECT id, device_name, created_at, last_used, expires_at, remember_days
                FROM sessions
                WHERE expires_at > ?
                ORDER BY last_used DESC""",
@@ -364,6 +379,127 @@ def is_device_name_taken(device_name, exclude_session_token=None):
         return row[0] > 0
     finally:
         conn.close()
+
+
+def refresh_session_by_device(device_name, user_id, days=30):
+    """Refresh an existing session for a device name.
+    If someone logs in with the correct password and a device name that
+    already exists, we replace the old session with a fresh one instead
+    of rejecting them. This is the expected behavior — same user, same
+    device label, new token. Returns the new token string."""
+    conn = _get_db()
+    try:
+        # Delete the old session(s) with this device name
+        conn.execute(
+            "DELETE FROM sessions WHERE LOWER(device_name) = LOWER(?) AND expires_at > ?",
+            (device_name.strip(), datetime.now().isoformat()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    # Create a fresh session with the same device name
+    return create_session(user_id, device_name, days=days)
+
+
+# ============================================================
+# LOGIN HISTORY — Every login gets recorded (success or fail)
+# ============================================================
+# The account owner can see who accessed their dashboard, from
+# what device, at what time. Even if they didn't post anything.
+
+def record_login(user_id, device_name="", ip_address="", user_agent="", success=True):
+    """Record a login attempt in the history table.
+    Called on every login — successful or failed."""
+    conn = _get_db()
+    try:
+        conn.execute(
+            """INSERT INTO login_history (user_id, device_name, ip_address, user_agent, success)
+               VALUES (?, ?, ?, ?, ?)""",
+            (user_id, device_name[:100], ip_address[:45], user_agent[:500], 1 if success else 0),
+        )
+        # Keep history from growing forever — cap at 500 entries
+        conn.execute("""
+            DELETE FROM login_history WHERE id NOT IN (
+                SELECT id FROM login_history ORDER BY created_at DESC LIMIT 500
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_login_history(limit=50):
+    """Get recent login history. Returns list of dicts with
+    device_name, ip_address, user_agent, success, created_at."""
+    conn = _get_db()
+    try:
+        rows = conn.execute(
+            """SELECT device_name, ip_address, user_agent, success, created_at
+               FROM login_history
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def revoke_session(session_id):
+    """Revoke (delete) a session by its database ID.
+    Admin uses this to kick devices off the dashboard."""
+    conn = _get_db()
+    try:
+        # Make sure the session exists before deleting
+        row = conn.execute("SELECT id FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        if not row:
+            return False, "Session not found."
+        conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+        conn.commit()
+        return True, None
+    finally:
+        conn.close()
+
+
+def parse_user_agent(ua_string):
+    """Extract a friendly device label from a User-Agent string.
+    'Mozilla/5.0 (Windows NT 10.0...) Chrome/120...' → 'Chrome on Windows'
+    No pip packages needed — just simple string matching."""
+    if not ua_string:
+        return "Unknown"
+    ua = ua_string.lower()
+
+    # Detect browser
+    browser = "Browser"
+    if "edg/" in ua or "edge/" in ua:
+        browser = "Edge"
+    elif "chrome/" in ua and "safari/" in ua:
+        browser = "Chrome"
+    elif "firefox/" in ua:
+        browser = "Firefox"
+    elif "safari/" in ua:
+        browser = "Safari"
+    elif "opera" in ua or "opr/" in ua:
+        browser = "Opera"
+
+    # Detect OS
+    os_name = "Unknown"
+    if "windows" in ua:
+        os_name = "Windows"
+    elif "iphone" in ua:
+        os_name = "iPhone"
+    elif "ipad" in ua:
+        os_name = "iPad"
+    elif "mac os" in ua or "macos" in ua:
+        os_name = "Mac"
+    elif "android" in ua:
+        os_name = "Android"
+    elif "linux" in ua:
+        os_name = "Linux"
+    elif "chromeos" in ua or "cros" in ua:
+        os_name = "ChromeOS"
+
+    return f"{browser} on {os_name}"
 
 
 def rename_session_device(token, new_name):

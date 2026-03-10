@@ -416,6 +416,7 @@
     display: grid;
     grid-template-columns: 1fr 380px;
     gap: 20px;
+    align-items: start;
   }
 
   /* --- PANELS --- */
@@ -424,6 +425,14 @@
     border: 1px solid #33345a;
     border-radius: 16px;
     overflow: hidden;
+  }
+
+  /* Left panel (thoughts) — fixed height with internal scroll.
+     Height matches the sidebar's natural height so both columns
+     end at the same level. Page itself scrolls normally. */
+  .columns > .panel {
+    display: flex;
+    flex-direction: column;
   }
 
   .panel-header {
@@ -444,9 +453,8 @@
 
   /* --- THOUGHT ITEMS --- */
   .thought-scroll {
-    max-height: none;
-    flex: 1;
-    min-height: 400px;
+    /* Height set dynamically by JS to match the sidebar exactly.
+       Infinite scroll loads more thoughts as user scrolls. */
     overflow-y: auto;
     scroll-behavior: smooth;
   }
@@ -679,8 +687,10 @@
     display: flex;
     align-items: center;
     gap: 12px;
+    transition: background 0.2s;
   }
 
+  .hot-item:hover { background: rgba(129, 140, 248, 0.05); }
   .hot-item:last-child { border-bottom: none; }
 
   .hot-rank {
@@ -949,11 +959,11 @@
   .settings-msg.ok { color: #34d399; }
   .settings-msg.err { color: #f87171; }
 
-  /* --- DEVICE SESSION LIST --- */
+  /* --- SESSION & HISTORY LIST --- */
   .session-item {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 10px;
     padding: 8px 0;
     border-bottom: 1px solid #2a2b48;
     font-size: 13px;
@@ -961,6 +971,22 @@
   .session-item:last-child { border-bottom: none; }
   .session-device { color: #c4b5fd; font-weight: 600; }
   .session-time { color: #6b6b8a; font-size: 11px; }
+  .session-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .session-meta { color: #6b6b8a; font-size: 11px; }
+  .session-current { color: #34d399; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+  .revoke-btn {
+    background: transparent; border: 1px solid #f87171; color: #f87171;
+    padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
+    transition: all 0.15s;
+  }
+  .revoke-btn:hover { background: #f87171; color: #1a1b2e; }
+  .history-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 0; border-bottom: 1px solid #2a2b48; font-size: 12px;
+  }
+  .history-item:last-child { border-bottom: none; }
+  .history-success { color: #34d399; }
+  .history-fail { color: #f87171; }
 
   /* --- THOUGHT DETAIL MODAL --- */
   .detail-overlay {
@@ -1173,7 +1199,6 @@
     <h2>STRATA</h2>
     <p>Enter your password to access the dashboard.</p>
     <input type="password" id="login-pw" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()" />
-    <input type="text" id="login-device" class="settings-input" placeholder="Device name (optional)" />
     <select id="login-remember" class="settings-input" style="color:#8b8ba8">
       <option value="30">Remember for 30 days</option>
       <option value="90">Remember for 90 days</option>
@@ -1232,8 +1257,19 @@
     </div>
 
     <div class="settings-section">
-      <h3>Connected Devices</h3>
+      <h3>Active Sessions</h3>
+      <p style="color:#6b6b8a;font-size:13px;line-height:1.5;margin-bottom:8px">
+        Devices currently logged into your dashboard. Revoke any session to kick that device off.
+      </p>
       <div id="set-sessions">Loading...</div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Login History</h3>
+      <p style="color:#6b6b8a;font-size:13px;line-height:1.5;margin-bottom:8px">
+        Recent login attempts — successful and failed. See who accessed your dashboard and when.
+      </p>
+      <div id="set-history">Loading...</div>
     </div>
 
     <div class="settings-section">
@@ -1270,7 +1306,7 @@
 <!-- TOP BAR -->
 <div class="topbar">
   <div class="logo">
-    STRATA <span>v1.0</span>
+    STRATA <span>v1.1</span>
   </div>
   <div class="status">
     <span class="status-dot offline" id="status-dot"></span>
@@ -1406,7 +1442,7 @@
   </div>
 
   <div class="footer">
-    STRATA v1.0 &mdash; Self-hosted AI memory server &mdash;
+    STRATA v1.1 &mdash; Self-hosted AI memory server &mdash;
     <a href="https://github.com/agenerationforwordz-tech/strata">GitHub</a> &mdash;
     A Generation Forwordz Foundation &mdash;
     Every memory is permanent
@@ -1487,15 +1523,16 @@
   }
 
   async function doLogin() {
-    var pw = document.getElementById('login-pw').value, device = document.getElementById('login-device').value.trim();
+    var pw = document.getElementById('login-pw').value;
     var remember = parseInt(document.getElementById('login-remember').value), err = document.getElementById('login-error');
     if (!pw) { err.textContent = 'Enter your password.'; return; }
     err.textContent = 'Logging in...';
     try {
-      var resp = await fetch(SERVER_URL + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw, device_name: device, remember_days: remember }) });
+      // No device_name — server auto-detects from User-Agent
+      var resp = await fetch(SERVER_URL + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw, remember_days: remember }) });
       var data = await resp.json();
       if (data.status !== 'ok') { err.textContent = data.error || 'Login failed.'; return; }
-      SESSION_TOKEN = data.token; DEVICE_NAME = device || data.device_name || ''; saveSession(data.token, DEVICE_NAME);
+      SESSION_TOKEN = data.token; DEVICE_NAME = data.device_name || ''; saveSession(data.token, DEVICE_NAME);
       document.getElementById('auth-overlay').classList.add('hidden'); loadDashboard();
     } catch (e) { err.textContent = 'Connection failed.'; }
   }
@@ -1521,7 +1558,7 @@
     clearSession(); SESSION_TOKEN = ''; document.getElementById('auth-overlay').classList.remove('hidden'); showView('login');
   }
 
-  function openSettings() { document.getElementById('settings-overlay').classList.remove('hidden'); document.getElementById('set-device').value = DEVICE_NAME; loadSessions(); }
+  function openSettings() { document.getElementById('settings-overlay').classList.remove('hidden'); document.getElementById('set-device').value = DEVICE_NAME; loadSessions(); loadHistory(); }
 
   function closeSettings() {
     document.getElementById('settings-overlay').classList.add('hidden');
@@ -1564,7 +1601,49 @@
       var data = await api('/api/auth/sessions');
       var s = data.sessions || [];
       if (!s.length) { c.innerHTML = '<div style="color:#6b6b8a">No active sessions.</div>'; return; }
-      c.innerHTML = s.map(function(x) { return '<div class="session-item"><span class="session-device">' + escapeHtml(x.device_name || 'Unknown') + '</span><span class="session-time">Last: ' + (x.last_used ? relativeTime(x.last_used) : 'never') + '</span></div>'; }).join('');
+      c.innerHTML = s.map(function(x) {
+        // Check if this is the current session by matching device name
+        var isCurrent = (x.device_name === DEVICE_NAME);
+        var html = '<div class="session-item">';
+        html += '<div class="session-info">';
+        html += '<span class="session-device">' + escapeHtml(x.device_name || 'Unknown') + '</span>';
+        html += '<span class="session-meta">Last active: ' + (x.last_used ? relativeTime(x.last_used) : 'never') + ' &middot; Expires: ' + (x.expires_at ? relativeTime(x.expires_at) : '?') + '</span>';
+        if (isCurrent) html += '<span class="session-current">This device</span>';
+        html += '</div>';
+        // Revoke button — not shown for current session
+        if (!isCurrent && x.id) html += '<button class="revoke-btn" onclick="revokeSession(' + x.id + ')">Revoke</button>';
+        html += '</div>';
+        return html;
+      }).join('');
+    } catch (e) { c.innerHTML = '<div style="color:#f87171">Failed to load.</div>'; }
+  }
+
+  async function revokeSession(sessionId) {
+    if (!confirm('Revoke this session? The device will be logged out.')) return;
+    try {
+      var data = await api('/api/auth/revoke', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionId }) });
+      if (data.status === 'ok') { loadSessions(); }
+      else { alert(data.error || 'Revoke failed.'); }
+    } catch (e) { alert('Error: ' + e.message); }
+  }
+
+  async function loadHistory() {
+    var c = document.getElementById('set-history');
+    try {
+      var data = await api('/api/auth/history?limit=20');
+      var h = data.history || [];
+      if (!h.length) { c.innerHTML = '<div style="color:#6b6b8a">No login history yet.</div>'; return; }
+      c.innerHTML = h.map(function(x) {
+        var statusClass = x.success ? 'history-success' : 'history-fail';
+        var statusText = x.success ? 'OK' : 'FAILED';
+        var html = '<div class="history-item">';
+        html += '<span class="' + statusClass + '" style="font-weight:600;min-width:45px">' + statusText + '</span>';
+        html += '<span style="color:#c4b5fd;min-width:120px">' + escapeHtml(x.device_name || 'Unknown') + '</span>';
+        html += '<span style="color:#6b6b8a;min-width:100px">' + escapeHtml(x.ip_address || '') + '</span>';
+        html += '<span style="color:#6b6b8a">' + (x.created_at ? relativeTime(x.created_at) : '') + '</span>';
+        html += '</div>';
+        return html;
+      }).join('');
     } catch (e) { c.innerHTML = '<div style="color:#f87171">Failed to load.</div>'; }
   }
 
@@ -1584,8 +1663,24 @@
     try {
       var r = await Promise.all([api('/api/stats'), api('/api/recent?limit=30&hours=8760&offset=0'), api('/api/report?days=7')]);
       renderStats(r[0]); renderFeed(r[1], true); renderTrendingTags(r[0], r[2]); renderDeviceBars(r[0]); renderHottest(r[2]);
+      // After everything renders, match thought panel height to sidebar
+      setTimeout(syncThoughtHeight, 150);
     } catch (e) { if (e.message === 'Session expired') return; setStatus('offline', 'Error'); }
   }
+
+  function syncThoughtHeight() {
+    var sidebar = document.querySelector('.sidebar');
+    var panel = document.querySelector('.columns > .panel');
+    var scroll = document.getElementById('thought-scroll');
+    if (!sidebar || !panel || !scroll) return;
+    // Get the sidebar's natural height (all 3 panels + gaps)
+    var sidebarH = sidebar.offsetHeight;
+    // The panel header (RECENT MEMORIES title bar) height
+    var headerH = panel.querySelector('.panel-header').offsetHeight;
+    // Set the scroll area so the panel's total = sidebar's total
+    scroll.style.maxHeight = (sidebarH - headerH - 2) + 'px';
+  }
+  window.addEventListener('resize', function() { setTimeout(syncThoughtHeight, 100); });
 
   // Load the next page of thoughts (called by scroll listener)
   async function loadMoreThoughts() {
@@ -1681,7 +1776,7 @@
   function renderHottest(rpt) {
     var el = document.getElementById('hottest-memories'), ht = rpt.hottest_memories||[];
     if (!ht.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#6b6b8a">No accessed memories yet</div>'; return; }
-    var h = ''; ht.forEach(function(x,i){ h += '<div class="hot-item"><span class="hot-rank">'+(i+1)+'</span><span class="hot-preview">'+escapeHtml(stripPrefix(x.preview||''))+'</span><span class="hot-count">'+fmt(x.access_count)+' hits</span></div>'; });
+    var h = ''; ht.forEach(function(x,i){ h += '<div class="hot-item" onclick="openThought('+x.id+')" style="cursor:pointer"><span class="hot-rank">'+(i+1)+'</span><span class="hot-preview">'+escapeHtml(stripPrefix(x.preview||''))+'</span><span class="hot-count">'+fmt(x.access_count)+' hits</span></div>'; });
     el.innerHTML = h;
   }
 
