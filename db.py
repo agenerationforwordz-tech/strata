@@ -62,12 +62,12 @@ def get_db():
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(BACKUP_DIR, exist_ok=True)
 
-    conn = sqlite3.connect(DB_PATH, timeout=10)  # Wait up to 10s for locks instead of failing
+    conn = sqlite3.connect(DB_PATH, timeout=30)  # 30s safety net — write queue handles contention
     conn.row_factory = sqlite3.Row  # Return rows as dicts
     # WAL mode: allows concurrent readers + 1 writer (no more "database is locked" errors)
-    # busy_timeout: wait 5s for a lock instead of failing immediately
+    # busy_timeout: 30s safety net — write queue serializes writes, this is backup protection
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA foreign_keys = ON")  # Enforce FK constraints (orphan prevention)
     return conn
 

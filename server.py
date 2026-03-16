@@ -40,6 +40,7 @@ from config import (
 )
 import auth
 import db
+from write_queue import WriteQueue
 import embedder
 import vault
 
@@ -265,6 +266,11 @@ mcp = FastMCP(SERVER_NAME, host=HOST, port=PORT)
 
 # Initialize database tables on import
 db.init_db()
+
+# Write queue — serializes all DB writes through a single thread to prevent
+# "database is locked" errors when multiple agents write simultaneously.
+# Reads bypass the queue entirely (SQLite WAL handles concurrent readers).
+_wq = WriteQueue(timeout=60)
 auth.init_auth_tables()
 
 # Warn if admin key isn't configured - delete operations will be disabled
@@ -370,7 +376,8 @@ def capture_thought(
             return warning
 
     # Store in database
-    thought_id = db.store_thought(
+    thought_id = _wq.submit(
+        db.store_thought,
         content=content,
         embedding=embedding,
         thought_type=thought_type,
@@ -424,7 +431,7 @@ def semantic_search(query: str, limit: int = 10, threshold: float = 0.0) -> str:
         return "No matching thoughts found."
 
     # Track which thoughts got accessed - builds the "heat map" over time
-    db.record_access([r["id"] for r in results])
+    _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
 
     sanitize_results(results)
     return json.dumps(results, indent=2, default=str)
@@ -521,13 +528,14 @@ def update_thought(
     if content is not None:
         new_embedding = embedder.embed_text(content)
 
-    success = db.update_thought(
+    success = _wq.submit(
+        db.update_thought,
         thought_id=thought_id,
         content=content,
         thought_type=thought_type,
         tags=tags,
         people=people,
-        new_embedding=new_embedding,
+        new_embedding=new_embedding
     )
 
     if not success:
@@ -587,7 +595,7 @@ def delete_thought(thought_id: int, admin_key: str = "") -> str:
 
     # Atomic delete - thought + attachments removed in single DB transaction.
     # Vault files are cleaned up AFTER the DB commit succeeds.
-    success, vault_paths = db.delete_thought_full(thought_id)
+    success, vault_paths = _wq.submit(db.delete_thought_full, thought_id)
     if not success:
         return f"Failed to delete thought #{thought_id}."
 
@@ -624,7 +632,7 @@ def get_thought(thought_id: int) -> str:
         return f"Thought #{thought_id} not found."
 
     # Track that this specific thought was accessed
-    db.record_access([thought_id])
+    _wq.submit_fire_and_forget(db.record_access, [thought_id])
 
     # Sanitize single thought - wrap content for AI safety
     if "content" in thought:
@@ -654,7 +662,7 @@ def search_by_tag(tag: str, limit: int = 20) -> str:
         return f"No thoughts found with tag '{tag}'."
 
     # Track access for returned thoughts
-    db.record_access([r["id"] for r in results])
+    _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
 
     sanitize_results(results)
     return json.dumps(results, indent=2, default=str)
@@ -681,7 +689,7 @@ def search_by_person(person: str, limit: int = 20) -> str:
         return f"No thoughts found mentioning '{person}'."
 
     # Track access for returned thoughts
-    db.record_access([r["id"] for r in results])
+    _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
 
     sanitize_results(results)
     return json.dumps(results, indent=2, default=str)
@@ -728,7 +736,7 @@ def find_related(thought_id: int, limit: int = 5) -> str:
         return f"No related thoughts found for #{thought_id}."
 
     # Track access for the source and all related thoughts
-    db.record_access([thought_id] + [r["id"] for r in results])
+    _wq.submit_fire_and_forget(db.record_access, [thought_id] + [r["id"] for r in results])
 
     sanitize_results(results)
     response = {
@@ -790,7 +798,7 @@ def hybrid_search(query: str, limit: int = 10, keyword_weight: float = 0.3, thre
         return "No matching thoughts found."
 
     # Track access
-    db.record_access([r["id"] for r in results])
+    _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
 
     sanitize_results(results)
     return json.dumps(results, indent=2, default=str)
@@ -856,7 +864,7 @@ def search_advanced(
         return f"No thoughts found matching filters: {filters}"
 
     # Track access
-    db.record_access([r["id"] for r in results])
+    _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
 
     sanitize_results(results)
     return json.dumps(results, indent=2, default=str)
@@ -942,14 +950,15 @@ def attach_file(
             )
 
         # Record the attachment in the database
-        attachment_id = db.store_attachment(
+        attachment_id = _wq.submit(
+            db.store_attachment,
             thought_id=thought_id,
             vault_path=result["vault_path"],
             filename=result["filename"],
             file_size=result["file_size"],
             mime_type=result["mime_type"],
             checksum=result["checksum"],
-            device=device,
+            device=device
         )
 
         # Format human-readable size
@@ -1126,7 +1135,7 @@ def detach_file(thought_id: int, filename: str, admin_key: str = "") -> str:
         pass  # File might already be gone - still clean up the DB record
 
     # Delete the DB record
-    db.delete_attachment(target["id"])
+    _wq.submit(db.delete_attachment, target["id"])
 
     return f"Detached '{filename}' from thought #{thought_id} (attachment #{target['id']}, {vault._human_size(target['file_size'])} freed)"
 
@@ -1206,6 +1215,7 @@ async def health_check(request):
         response["model_loaded"] = embedder.is_loaded()
         response["total_thoughts"] = stats["total_thoughts"]
         response["db_size_mb"] = stats["db_size_mb"]
+        response["write_queue"] = _wq.stats
 
     return JSONResponse(response)
 
@@ -1288,7 +1298,8 @@ async def api_capture(request):
             }, status_code=409)
 
     # Store the thought
-    thought_id = db.store_thought(
+    thought_id = _wq.submit(
+        db.store_thought,
         content=content,
         embedding=embedding_val,
         thought_type=thought_type,
@@ -1358,7 +1369,7 @@ async def api_search(request):
 
     # Track access
     if results:
-        db.record_access([r["id"] for r in results])
+        _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
         sanitize_results(results)
 
     return JSONResponse({
@@ -1400,7 +1411,7 @@ async def api_search_by_tag(request):
     results = db.search_by_tag(tag, limit=limit)
 
     if results:
-        db.record_access([r["id"] for r in results])
+        _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
         sanitize_results(results)
 
     return JSONResponse({
@@ -1436,7 +1447,7 @@ async def api_thought_detail(request):
     if not thought:
         return JSONResponse({"status": "error", "error": f"Thought #{thought_id} not found"}, status_code=404)
 
-    db.record_access([thought_id])
+    _wq.submit_fire_and_forget(db.record_access, [thought_id])
 
     # Don't wrap content in AI data markers - this is for human eyes
     # But still escape any HTML when rendering (dashboard handles that)
@@ -1518,14 +1529,15 @@ async def api_vault_upload(request):
             created_at=thought.get("created_at"),
         )
 
-        attachment_id = db.store_attachment(
+        attachment_id = _wq.submit(
+            db.store_attachment,
             thought_id=thought_id,
             vault_path=result["vault_path"],
             filename=result["filename"],
             file_size=result["file_size"],
             mime_type=result["mime_type"],
             checksum=result["checksum"],
-            device=device,
+            device=device
         )
 
         return JSONResponse({
