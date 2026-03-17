@@ -170,6 +170,10 @@ def init_db():
             conn.execute("ALTER TABLE thoughts ADD COLUMN trigger TEXT DEFAULT 'unknown'")
             print("[db] Added trigger column to thoughts table")
 
+        if "original_date" not in existing_cols:
+            conn.execute("ALTER TABLE thoughts ADD COLUMN original_date TEXT DEFAULT NULL")
+            print("[db] Added original_date column to thoughts table")
+
         # --- File Vault attachments ---
         # Links files stored in the vault to their parent thoughts.
         # Each thought can have 0-500 attached files (code, docs, archives, etc.)
@@ -200,10 +204,60 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_thoughts_created_at ON thoughts(created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_thoughts_type ON thoughts(type)")
 
+        # --- Audit trail table ---
+        # Every mutation (create/update/delete) to a thought gets logged here.
+        # Preserves the full history so you can see what changed, when, and by whom.
+        # Essential for debugging — if an agent corrupts a thought, the audit trail
+        # shows exactly what happened and lets you recover the original content.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS thought_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                thought_id INTEGER NOT NULL,
+                action TEXT NOT NULL,
+                old_content TEXT,
+                new_content TEXT,
+                changed_fields TEXT DEFAULT '[]',
+                source TEXT DEFAULT 'unknown',
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_history_thought_id ON thought_history(thought_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_history_timestamp ON thought_history(timestamp)")
+
         conn.commit()
     finally:
         conn.close()
     print(f"[db] Database initialized at {DB_PATH}")
+
+
+def log_history(thought_id, action, old_content=None, new_content=None, changed_fields=None, source="unknown"):
+    """Log a mutation to the thought_history audit trail.
+
+    Every create, update, and delete gets recorded here so we have a complete
+    paper trail of what happened to every thought. This is a write-only log —
+    history entries are never modified or deleted.
+
+    Args:
+        thought_id: The ID of the thought being mutated
+        action: What happened — 'create', 'update', or 'delete'
+        old_content: The content BEFORE the change (None for creates)
+        new_content: The content AFTER the change (None for deletes)
+        changed_fields: List of field names that were modified (e.g. ['content', 'tags'])
+        source: Who made the change (e.g. 'claude-code', 'telegram', 'manual')
+    """
+    if changed_fields is None:
+        changed_fields = []
+
+    conn = get_db()
+    try:
+        conn.execute(
+            """INSERT INTO thought_history (thought_id, action, old_content, new_content, changed_fields, source)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (thought_id, action, old_content, new_content, json.dumps(changed_fields), source)
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def store_thought(content, embedding, thought_type="thought", tags=None, people=None, source="manual", machine="unknown", trigger="unknown"):
@@ -255,7 +309,77 @@ def store_thought(content, embedding, thought_type="thought", tags=None, people=
         conn.commit()
     finally:
         conn.close()
+
+    # Audit trail — record the creation
+    log_history(thought_id, action="create", new_content=content, source=source)
+
     return thought_id
+
+
+def store_legacy_thought(content, embedding, thought_type="thought", tags=None, people=None,
+                         source="pre-strata", original_date=None, machine="unknown", trigger="manual"):
+    """Store a pre-Strata historical thought with a NEGATIVE ID.
+
+    Use this to import old projects, notes, and files that existed before
+    Strata was built. Negative IDs create a clean namespace separation:
+      - Positive IDs (1, 2, 3...) = live Strata thoughts (real-time captures)
+      - Negative IDs (-1, -2, -3...) = historical imports (pre-Strata era)
+
+    Legacy thoughts are fully searchable via semantic/vector search.
+    They skip FTS5 indexing (SQLite limitation with negative rowids)
+    so they won't appear in hybrid keyword search — minor tradeoff.
+
+    Args:
+        content: The thought/memory text to store
+        embedding: 768-dim float list from the embedding model
+        thought_type: Category (thought, decision, session, project, etc.)
+        tags: List of string tags — "legacy" is auto-added
+        people: List of people names mentioned
+        source: Defaults to "pre-strata" to identify historical imports
+        original_date: When this ACTUALLY happened (e.g. "2024-06-15")
+        machine: Which device this originally came from
+        trigger: How capture was initiated (usually "manual" for imports)
+
+    Returns:
+        The new thought's negative ID (e.g. -1, -42, -200)
+    """
+    tags = tags or []
+    people = people or []
+    conn = get_db()
+    try:
+        # Calculate the next negative ID: one less than the current minimum.
+        row = conn.execute("SELECT MIN(id) AS min_id FROM thoughts").fetchone()
+        current_min = row["min_id"]
+        if current_min is None or current_min > 0:
+            next_id = -1
+        else:
+            next_id = current_min - 1
+
+        # Insert with explicit negative ID — won't affect positive AUTOINCREMENT sequence
+        conn.execute(
+            """INSERT INTO thoughts (id, content, type, tags, people, source, machine, trigger, original_date)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (next_id, content, thought_type, json.dumps(tags), json.dumps(people),
+             source, machine, trigger, original_date)
+        )
+
+        # Store the vector embedding
+        conn.execute(
+            "INSERT INTO thought_embeddings (thought_id, embedding) VALUES (?, ?)",
+            (next_id, _serialize_embedding(embedding))
+        )
+
+        # SKIP FTS5 — doesn't support negative rowids.
+        # Legacy thoughts are still fully discoverable via semantic search.
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Audit trail
+    log_history(next_id, action="create", new_content=content, source=source)
+
+    return next_id
 
 
 def find_duplicates(embedding, threshold=None):
@@ -1071,6 +1195,19 @@ def update_thought(thought_id, content=None, thought_type=None, tags=None, peopl
         conn.commit()
     finally:
         conn.close()
+
+    # Audit trail — record what changed
+    changed = []
+    if content is not None:
+        changed.append("content")
+    if thought_type is not None:
+        changed.append("type")
+    if tags is not None:
+        changed.append("tags")
+    if people is not None:
+        changed.append("people")
+    log_history(thought_id, action="update", old_content=old_content, new_content=content, changed_fields=changed, source="unknown")
+
     return True
 
 
@@ -1145,7 +1282,9 @@ def delete_thought_full(thought_id):
         conn.execute("DELETE FROM thought_embeddings WHERE thought_id = ?", (thought_id,))
 
         # FTS5 contentless delete
-        row = conn.execute("SELECT content, tags, people FROM thoughts WHERE id = ?", (thought_id,)).fetchone()
+        row = conn.execute("SELECT content, tags, people, source FROM thoughts WHERE id = ?", (thought_id,)).fetchone()
+        deleted_content = row["content"] if row else None
+        deleted_source = row["source"] if row else "unknown"
         if row:
             old_tags = _safe_json_list(row["tags"])
             old_people = _safe_json_list(row["people"])
@@ -1158,9 +1297,13 @@ def delete_thought_full(thought_id):
         conn.execute("DELETE FROM thoughts WHERE id = ?", (thought_id,))
 
         conn.commit()
-        return True, vault_paths
     finally:
         conn.close()
+
+    # Audit trail — record the deletion with the content that was removed
+    log_history(thought_id, action="delete", old_content=deleted_content, source=deleted_source)
+
+    return True, vault_paths
 
 
 def get_thought_by_id(thought_id):
@@ -1524,3 +1667,135 @@ def find_attachment_by_checksum(checksum):
         "filename": row["filename"],
         "file_size": row["file_size"],
     }
+
+
+def get_thought_history(thought_id=None, action=None, limit=50):
+    """Get audit trail entries from the thought_history table.
+
+    Two modes:
+    1. thought_id given: full mutation history for that specific thought
+    2. thought_id None: most recent changes across ALL thoughts
+
+    Args:
+        thought_id: Optional — filter to a specific thought
+        action: Optional — filter by 'create', 'update', or 'delete'
+        limit: Max entries to return (default 50)
+
+    Returns:
+        List of history entry dicts, newest first
+    """
+    conn = get_db()
+    try:
+        conditions = []
+        params = []
+
+        if thought_id is not None:
+            conditions.append("thought_id = ?")
+            params.append(thought_id)
+        if action is not None:
+            conditions.append("action = ?")
+            params.append(action)
+
+        where = ""
+        if conditions:
+            where = "WHERE " + " AND ".join(conditions)
+
+        rows = conn.execute(
+            f"""SELECT id, thought_id, action, old_content, new_content, changed_fields, source, timestamp
+                FROM thought_history
+                {where}
+                ORDER BY timestamp DESC
+                LIMIT ?""",
+            params + [limit]
+        ).fetchall()
+    finally:
+        conn.close()
+
+    results = []
+    for row in rows:
+        results.append({
+            "id": row["id"],
+            "thought_id": row["thought_id"],
+            "action": row["action"],
+            "old_content": row["old_content"],
+            "new_content": row["new_content"],
+            "changed_fields": _safe_json_list(row["changed_fields"]),
+            "source": row["source"],
+            "timestamp": row["timestamp"],
+        })
+
+    return results
+
+
+def search_by_timerange(date_from=None, date_to=None, thought_type=None, source=None, machine=None, limit=20):
+    """Search thoughts within a time range with optional filters.
+
+    Perfect for temporal queries like:
+    - "What did I capture last Tuesday?"
+    - "What has Telegram been saving this week?"
+    - "Show me all decisions from March"
+
+    Args:
+        date_from: ISO date string (YYYY-MM-DD) — start of range (inclusive)
+        date_to: ISO date string (YYYY-MM-DD) — end of range (inclusive)
+        thought_type: Optional filter by type
+        source: Optional filter by source
+        machine: Optional filter by machine
+        limit: Max results (default 20)
+
+    Returns:
+        List of thought dicts within the time range, newest first
+    """
+    conn = get_db()
+    try:
+        query = """SELECT id, content, type, tags, people, source, created_at, machine, trigger
+                   FROM thoughts"""
+        conditions = []
+        params = []
+
+        if date_from is not None:
+            conditions.append("created_at >= ?")
+            params.append(date_from)
+
+        if date_to is not None:
+            # Include the entire end day
+            conditions.append("created_at <= ?")
+            params.append(date_to + " 23:59:59")
+
+        if thought_type is not None:
+            conditions.append("type = ?")
+            params.append(thought_type)
+
+        if source is not None:
+            conditions.append("source = ?")
+            params.append(source)
+
+        if machine is not None:
+            conditions.append("machine = ?")
+            params.append(machine)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+
+        rows = conn.execute(query, params).fetchall()
+    finally:
+        conn.close()
+
+    results = []
+    for row in rows:
+        results.append({
+            "id": row["id"],
+            "content": row["content"],
+            "type": row["type"],
+            "tags": _safe_json_list(row["tags"]),
+            "people": _safe_json_list(row["people"]),
+            "source": row["source"],
+            "created_at": row["created_at"],
+            "machine": row["machine"] or "unknown",
+            "trigger": row["trigger"] or "unknown",
+        })
+
+    return results

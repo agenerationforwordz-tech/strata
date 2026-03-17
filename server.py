@@ -19,10 +19,13 @@ import hmac
 import json
 import os
 import re
+import struct
 import sys
 import time
 from collections import defaultdict
 from datetime import datetime
+
+import numpy as np
 
 # Add project dir to path so imports work
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -389,6 +392,110 @@ def capture_thought(
     )
 
     return f"Stored thought #{thought_id} (type={thought_type}, tags={tags}, machine={machine}, trigger={trigger})"
+
+
+@mcp.tool()
+def capture_legacy(
+    content: str,
+    thought_type: str = "thought",
+    tags: list[str] = None,
+    people: list[str] = None,
+    source: str = "pre-strata",
+    original_date: str = "",
+    force: bool = False,
+    machine: str = "unknown",
+    trigger: str = "manual",
+) -> str:
+    """Store a PRE-STRATA historical thought with a negative ID.
+
+    Use this to import old projects, notes, and files that existed before
+    Strata was built. Creates a clean namespace separation:
+      - Positive IDs (1, 2, 3...) = live Strata thoughts (real-time)
+      - Negative IDs (-1, -2, -3...) = historical imports (pre-Strata)
+
+    Legacy thoughts are fully searchable via semantic/vector search.
+    They skip FTS5 indexing (SQLite limitation with negative rowids)
+    so they won't appear in hybrid keyword search â€” minor tradeoff.
+
+    Args:
+        content: The historical thought/memory text to store.
+        thought_type: Category â€” one of: thought, decision, session,
+                      person, insight, project, instruction, reference
+        tags: Optional list of tags. "legacy" is auto-added to all imports.
+        people: Optional list of people mentioned
+        source: Defaults to "pre-strata". Use to identify import batches
+        original_date: When this ACTUALLY happened (e.g. "2024-06-15").
+                       Stored separately from created_at (always import time).
+        force: Set True to skip dedup check (useful for bulk imports)
+        machine: Which device this originally came from
+        trigger: How capture was initiated (usually "manual" for imports)
+
+    Returns:
+        Confirmation message with the negative thought ID
+    """
+    # Validate type
+    if thought_type not in VALID_TYPES:
+        thought_type = "thought"
+
+    tags = list(tags) if tags else []
+    people = list(people) if people else []
+
+    # Input limits
+    if len(content) > MAX_CONTENT_LENGTH:
+        return f"Content too long ({len(content)} chars, max {MAX_CONTENT_LENGTH})."
+    tags = [t[:MAX_TAG_LENGTH] for t in tags[:MAX_TAGS] if isinstance(t, str)]
+    people = [p[:MAX_PERSON_LENGTH] for p in people[:MAX_PEOPLE] if isinstance(p, str)]
+
+    # Auto-tag "legacy"
+    existing_lower = {t.lower() for t in tags}
+    if "legacy" not in existing_lower:
+        tags.append("legacy")
+        existing_lower.add("legacy")
+
+    # Auto-extract additional tags from content
+    auto_tags = auto_extract_tags(content)
+    for at in auto_tags:
+        if at not in existing_lower:
+            tags.append(at)
+            existing_lower.add(at)
+
+    # Generate embedding
+    embedding = embedder.embed_text(content)
+
+    # Dedup check
+    if not force:
+        duplicates = db.find_duplicates(embedding, threshold=DEDUP_THRESHOLD)
+        if duplicates:
+            warning = f"DUPLICATE WARNING: Found {len(duplicates)} similar thought(s):\n"
+            for dupe in duplicates[:3]:
+                warning += f"  - Thought #{dupe['id']} ({dupe['similarity']:.0%} similar): {dupe['preview']}\n"
+            warning += "\nTo save anyway, call capture_legacy again with force=True."
+            return warning
+
+    # Parse original_date
+    parsed_date = None
+    if original_date and original_date.strip():
+        try:
+            parsed_date = datetime.fromisoformat(original_date.strip()).isoformat()
+        except ValueError:
+            return f"Invalid original_date format: '{original_date}'. Use ISO format like '2024-06-15'."
+
+    # Store with negative ID
+    thought_id = _wq.submit(
+        db.store_legacy_thought,
+        content=content,
+        embedding=embedding,
+        thought_type=thought_type,
+        tags=tags,
+        people=people,
+        source=source,
+        original_date=parsed_date,
+        machine=machine,
+        trigger=trigger,
+    )
+
+    date_info = f", original_date={parsed_date}" if parsed_date else ""
+    return f"Stored legacy thought #{thought_id} (type={thought_type}, tags={tags}, source={source}{date_info})"
 
 
 @mcp.tool()
@@ -868,6 +975,134 @@ def search_advanced(
 
     sanitize_results(results)
     return json.dumps(results, indent=2, default=str)
+
+
+@mcp.tool()
+def temporal_search(
+    date_from: str = "",
+    date_to: str = "",
+    thought_type: str = "",
+    source: str = "",
+    machine: str = "",
+    query: str = "",
+    limit: int = 20,
+) -> str:
+    """Search thoughts by time range with optional semantic filtering.
+
+    Find what happened during a specific period. Perfect for:
+    - "What decisions did I make last week?"
+    - "Show me everything from March 2026"
+    - "What did the nightly agent capture yesterday?"
+
+    If you provide a query along with dates, results are ranked by
+    semantic similarity within the time window. Without a query,
+    results are sorted newest first.
+
+    Args:
+        date_from: Start date (ISO: YYYY-MM-DD). Empty = no lower bound.
+        date_to: End date (ISO: YYYY-MM-DD). Empty = no upper bound.
+        thought_type: Filter by type (decision, insight, project, etc.)
+        source: Filter by source (claude-code, telegram, etc.)
+        machine: Filter by machine (surface, helios, etc.)
+        query: Optional semantic query to rank results by relevance
+        limit: Max results (default 20)
+
+    Returns:
+        JSON string of matching thoughts within the time range
+    """
+    results = db.search_by_timerange(
+        date_from=date_from or None,
+        date_to=date_to or None,
+        thought_type=thought_type or None,
+        source=source or None,
+        machine=machine or None,
+        limit=limit * 2 if query else limit,
+    )
+
+    # If a semantic query was provided, re-rank by similarity
+    if query and results:
+        query_embedding = embedder.embed_text(query)
+        query_vec = np.array(query_embedding, dtype=np.float32)
+        query_norm = query_vec / (np.linalg.norm(query_vec) + 1e-10)
+
+        scored = []
+        for r in results:
+            conn = db.get_db()
+            try:
+                row = conn.execute(
+                    "SELECT embedding FROM thought_embeddings WHERE thought_id = ?",
+                    (r["id"],)
+                ).fetchone()
+            finally:
+                conn.close()
+
+            if row:
+                stored_vec = np.array(
+                    struct.unpack(f"{db.EMBEDDING_DIM}f", row["embedding"]),
+                    dtype=np.float32
+                )
+                stored_norm = stored_vec / (np.linalg.norm(stored_vec) + 1e-10)
+                similarity = float(np.dot(query_norm, stored_norm))
+                r["similarity"] = round(similarity, 4)
+                scored.append(r)
+
+        scored.sort(key=lambda x: x.get("similarity", 0), reverse=True)
+        results = scored[:limit]
+
+    if not results:
+        date_desc = ""
+        if date_from:
+            date_desc += f" from {date_from}"
+        if date_to:
+            date_desc += f" to {date_to}"
+        return f"No thoughts found{date_desc}."
+
+    _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
+    sanitize_results(results)
+    return json.dumps(results, indent=2, default=str)
+
+
+# ============================================================
+# AUDIT TRAIL â€” See what changed and when
+# ============================================================
+# Every ADD/UPDATE/DELETE is logged to thought_history.
+# This gives you full memory archaeology â€” when was a thought
+# created, how many times was it updated, what did it say before?
+
+@mcp.tool()
+def get_history(
+    thought_id: int = None,
+    action: str = "",
+    limit: int = 50,
+) -> str:
+    """View the audit trail of memory changes.
+
+    Every time a thought is created, updated, or deleted, it gets
+    logged here. Use this to see:
+    - What changed recently across all of Strata
+    - The full edit history of a specific thought
+    - Who/what made changes (which agent, which machine)
+
+    Args:
+        thought_id: Get history for a specific thought (optional)
+        action: Filter by action type: 'create', 'update', 'delete' (optional)
+        limit: Max results (default 50)
+
+    Returns:
+        JSON string of history entries, newest first
+    """
+    history = db.get_thought_history(
+        thought_id=thought_id,
+        action=action or None,
+        limit=limit,
+    )
+
+    if not history:
+        if thought_id:
+            return f"No history found for thought #{thought_id}."
+        return "No history entries found."
+
+    return json.dumps(history, indent=2, default=str)
 
 
 # generate_report - available via extensions.py (not included in public repo)
@@ -2152,12 +2387,12 @@ app = OAuthBypassMiddleware(mcp_app)
 
 
 # ============================================================
-# EXTENSIONS — Private agent orchestration layer (optional)
+# EXTENSIONS ï¿½ Private agent orchestration layer (optional)
 # ============================================================
 # If extensions.py is present, additional MCP tools and REST
 # endpoints are registered. If it's missing (like on a fresh
 # clone from GitHub), the server runs fine with just the core
-# tools above. This is the "Option B" architecture — public
+# tools above. This is the "Option B" architecture ï¿½ public
 # core in server.py, private agent layer in extensions.py.
 try:
     from extensions import register_extensions
@@ -2168,12 +2403,12 @@ try:
         sanitize_for_ai=sanitize_for_ai,
         check_auth=check_auth,
     )
-    print("[strata] Extensions loaded — private agent tools active.")
+    print("[strata] Extensions loaded ï¿½ private agent tools active.")
 except ImportError:
-    # No extensions.py found — that's fine, core tools are sufficient.
-    print("[strata] No extensions found — running public toolset only.")
+    # No extensions.py found ï¿½ that's fine, core tools are sufficient.
+    print("[strata] No extensions found ï¿½ running public toolset only.")
 except Exception as e:
-    # Extensions exist but failed to load — log it but don't crash.
+    # Extensions exist but failed to load ï¿½ log it but don't crash.
     print(f"[strata] WARNING: Extensions failed to load: {e}")
 
 
