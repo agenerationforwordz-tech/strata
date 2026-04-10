@@ -682,6 +682,40 @@ def get_stats() -> str:
 
 
 @mcp.tool()
+def strata_status() -> str:
+    """Return Strata's identity, status, and the usage protocol AI agents should follow.
+
+    AI clients should call this ONCE at the start of every session. It returns a
+    short natural-language protocol that tells the agent when to capture, when to
+    search, how to interpret negative IDs, what the ten thought types mean, and
+    how to behave if the user references earlier sessions. After reading the
+    protocol, the agent should start using Strata proactively without waiting
+    for explicit instructions.
+
+    The protocol text is admin-editable via system_config['agent_protocol'] —
+    every deployed Strata instance can customize the tone, policies, and
+    instance-specific guidance by updating that row. This function returns
+    whatever text is currently stored, falling back to a sensible default if
+    no override is set.
+
+    Returns:
+        A human + agent-readable status/protocol block.
+    """
+    stats = db.get_stats()
+    protocol = _load_agent_protocol()
+    lines = [
+        "STRATA — persistent memory for AI assistants",
+        f"Total thoughts: {stats.get('total_thoughts', 0)}",
+        f"Database size: {stats.get('db_size_mb', 0)} MB",
+        f"MCP access: {'ENABLED' if _mcp_global_enabled else 'DISABLED (kill switch active)'}",
+        "",
+        "=== AGENT PROTOCOL ===",
+        protocol,
+    ]
+    return "\n".join(lines)
+
+
+@mcp.tool()
 def update_thought(
     thought_id: int,
     content: str = None,
@@ -2481,6 +2515,103 @@ def _persist_kill_switch_state(enabled):
     except Exception as e:
         print(f"[KILL SWITCH] Warning: could not persist state to DB: {e}")
 
+
+# ============================================================
+# AGENT PROTOCOL — strata_status teaches agents how to use Strata
+# ============================================================
+# Every AI agent that connects to Strata should call strata_status as its
+# first tool call. That tool returns the text below (or the admin-overridden
+# version) so the agent learns when to capture, when to search, how to
+# handle negative-ID legacy thoughts, and what the 10 thought types mean.
+#
+# The default is the sensible general-purpose protocol. Admins can override
+# per-instance by writing to system_config['agent_protocol'] — edit it from
+# the dashboard, the REST endpoint PUT /admin/api/protocol, or directly in
+# the database. This lets each deployment personalize tone and policy
+# without patching server.py.
+
+DEFAULT_AGENT_PROTOCOL = """You are connected to Strata, a persistent memory server that lives on the user's own hardware. You can read and write memories across every session the user has with you. The goal: the user should never have to ask you to remember something — you do it automatically.
+
+WHEN TO CAPTURE (call capture_thought proactively, don't wait to be asked):
+- The user makes a decision ("let's use Postgres", "we decided on Clerk")
+- The user expresses a preference or policy ("I prefer X", "don't ever do Y")
+- The user shares a debugging discovery ("turns out the issue was Z")
+- The user describes a project's state, architecture, or constraints
+- The user tells you something about a person (role, relationship, context)
+- The user has a breakthrough or insight worth remembering
+
+WHEN TO SEARCH (call semantic_search, list_recent, or get_relevant_context):
+- At the start of every session, call list_recent(limit=5) to load context
+- When the user says "remember when...", "last time we talked about...", "what did we decide about..."
+- When the user mentions a project by name, call get_relevant_context(topic=<name>)
+- When the user asks you to recall something specific, use semantic_search with their exact phrasing
+
+THOUGHT TYPES (use the most specific one that fits):
+- thought — general idea or observation
+- decision — a choice that was made and why
+- session — daily session notes
+- person — notes about a person
+- insight — a realization or learning
+- project — project-specific context
+- instruction — how-to or working preferences
+- reference — technical reference docs
+- observation — something noticed in passing (softer than insight)
+- idea — a raw spark, not yet a decision or project
+
+LEGACY IMPORTS (negative IDs):
+- Thoughts with negative IDs (-1, -2, -3...) are pre-Strata historical data the user imported via capture_legacy
+- Positive IDs are captures from after the user installed Strata
+- Treat them the same way in semantic search — both are real memories
+- When relevant, you can tell the user "this is from before you had Strata" by checking the sign of the ID
+
+STAR 0:
+- The constellation viewer has a central origin called Star 0. It represents Strata's identity and the moment the user's memory became persistent.
+- If the user asks about Strata itself or the origin of their memory, reference Star 0.
+
+GENERAL PRINCIPLES:
+- Be proactive. Capture when a moment is worth remembering, not only when asked.
+- Be accurate. If you're unsure whether a thought already exists, search first.
+- Use tags and people fields thoughtfully — they make future retrieval easier.
+- Respect the user's privacy — Strata runs on their hardware. Don't try to send its contents anywhere else.
+"""
+
+
+def _load_agent_protocol():
+    """Return the current agent protocol text.
+    Reads from system_config['agent_protocol'] if set, otherwise returns
+    DEFAULT_AGENT_PROTOCOL. Admins can customize per-instance by writing
+    to that row via the dashboard or PUT /admin/api/protocol."""
+    try:
+        conn = db.get_db()
+        row = conn.execute(
+            "SELECT value FROM system_config WHERE key = 'agent_protocol'"
+        ).fetchone()
+        if row and row[0]:
+            return row[0]
+    except Exception:
+        pass
+    return DEFAULT_AGENT_PROTOCOL
+
+
+def _save_agent_protocol(text):
+    """Persist a new agent protocol text for this instance.
+    Called by PUT /admin/api/protocol. Empty string resets to default."""
+    try:
+        conn = db.get_db()
+        if text and text.strip():
+            conn.execute(
+                "INSERT OR REPLACE INTO system_config (key, value, updated_at) VALUES ('agent_protocol', ?, datetime('now'))",
+                (text,),
+            )
+        else:
+            conn.execute("DELETE FROM system_config WHERE key = 'agent_protocol'")
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[PROTOCOL] Warning: could not persist agent protocol: {e}")
+        return False
+
+
 # Initialize system_config table and load persisted state
 _init_system_config()
 _mcp_global_enabled = _load_kill_switch_state()  # Server-wide MCP access flag (persists across restarts)
@@ -2491,6 +2622,58 @@ async def admin_api_mcp_toggle_get(request):
     # GET is public — constellation and dashboards need to poll this
     # to show the kill switch state visually. Only PUT requires admin auth.
     return JSONResponse({"enabled": _mcp_global_enabled})
+
+
+async def api_protocol_get(request):
+    """GET /api/protocol — return the current agent protocol text.
+    Public so agents can fetch it without needing admin credentials
+    (it's the same text strata_status returns to any caller). Useful for
+    debugging, for dashboards that want to show the protocol, and for
+    admin UIs that need the current value before editing it."""
+    return JSONResponse({
+        "protocol": _load_agent_protocol(),
+        "is_default": _load_agent_protocol() == DEFAULT_AGENT_PROTOCOL,
+    })
+
+
+async def admin_api_protocol_set(request):
+    """PUT /admin/api/protocol — replace the agent protocol text for this
+    Strata instance. Requires the human admin key (this is a policy change
+    that affects how every connected agent behaves, so agent keys with
+    write/admin perms are NOT enough — only the human admin can change it).
+
+    Body: {"protocol": "..."}  — new protocol text. Empty string resets
+    to the hardcoded default shipped with Strata."""
+    # Require the human admin key specifically — not check_admin_auth,
+    # which also accepts agent keys with can_admin. Protocol text controls
+    # how EVERY agent behaves, so only the human gets to change it.
+    admin_key = request.headers.get("x-admin-key", "") or request.headers.get("x-api-key", "")
+    if not (admin_key and ADMIN_KEY and hmac.compare_digest(str(admin_key), ADMIN_KEY)):
+        return JSONResponse(
+            {"status": "error",
+             "error": "Only the human administrator can change the agent protocol. Agent keys are not accepted here."},
+            status_code=403,
+        )
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"status": "error", "error": "Invalid JSON"}, status_code=400)
+    text = body.get("protocol", "")
+    if not isinstance(text, str):
+        return JSONResponse({"status": "error", "error": "protocol must be a string"}, status_code=400)
+    # Generous cap: 50KB of protocol text is plenty for even the most verbose
+    # per-instance customization. Stops accidental paste-the-whole-codebase.
+    if len(text) > 50_000:
+        return JSONResponse({"status": "error", "error": "protocol exceeds 50KB limit"}, status_code=400)
+    ok = _save_agent_protocol(text)
+    if not ok:
+        return JSONResponse({"status": "error", "error": "failed to persist protocol"}, status_code=500)
+    print(f"[PROTOCOL] Agent protocol {'reset to default' if not text.strip() else 'updated'} by human admin")
+    return JSONResponse({
+        "status": "ok",
+        "protocol": _load_agent_protocol(),
+        "is_default": not text.strip(),
+    })
 
 async def admin_api_mcp_toggle_set(request):
     """PUT /admin/api/mcp-toggle — flip the global MCP kill switch.
@@ -2912,6 +3095,9 @@ mcp_app.routes.insert(25, Route("/admin/api/agents/{agent_id:int}", admin_api_ag
 mcp_app.routes.insert(26, Route("/admin/api/agents/{agent_id:int}/regenerate", admin_api_agents_regen, methods=["POST"]))
 mcp_app.routes.insert(27, Route("/admin/api/mcp-toggle", admin_api_mcp_toggle_get, methods=["GET"]))
 mcp_app.routes.insert(28, Route("/admin/api/mcp-toggle", admin_api_mcp_toggle_set, methods=["PUT"]))
+# Agent protocol — public GET so agents can fetch, admin-only PUT to update.
+mcp_app.routes.insert(29, Route("/api/protocol", api_protocol_get, methods=["GET"]))
+mcp_app.routes.insert(30, Route("/admin/api/protocol", admin_api_protocol_set, methods=["PUT"]))
 
 # Dashboard auth routes — human login system
 mcp_app.routes.insert(29, Route("/api/auth/status", api_auth_status, methods=["GET"]))

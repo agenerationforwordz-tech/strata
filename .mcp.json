@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "strata": {
+      "type": "http",
+      "url": "${user_config.strata_url}",
+      "headers": {
+        "X-API-Key": "${user_config.strata_api_key}"
+      }
+    }
+  }
+}

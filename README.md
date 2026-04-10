@@ -123,7 +123,22 @@ Server runs at `http://0.0.0.0:4320`.
 
 First, register the agent at `http://your-server:4320/admin/agents` and copy its key. Each agent should have its own key — that's how the per-agent permissions, identity colors, and audit trail work.
 
-### Claude Code
+### Claude Code — one-command install (recommended)
+
+Strata ships as a Claude Code plugin. Add the marketplace once, then install:
+
+```bash
+claude plugin marketplace add agenerationforwordz-tech/strata-plugins
+claude plugin install strata@strata-plugins
+```
+
+During install you'll be prompted for two things:
+- **`strata_url`** — e.g. `http://localhost:4320/mcp` for a local install
+- **`strata_api_key`** — the agent key you copied from `/admin/agents`
+
+Restart Claude Code and your AI has persistent memory across every session.
+
+### Claude Code — manual MCP config (older versions)
 
 ```bash
 claude mcp add --transport http strata http://your-server-ip:4320/mcp \
@@ -147,6 +162,21 @@ Or add to `~/.claude/settings.json`:
 ### Codex CLI
 
 Same format in your Codex MCP config — register a `codex` agent at `/admin/agents`, copy the key, set it in the `X-API-Key` header.
+
+### How your agent learns to use Strata
+
+Every connected agent should call `strata_status` as its first tool call. That tool returns a natural-language protocol that teaches the agent *when* to capture, *when* to search, how to handle the 10 thought types, and how to interpret negative-ID legacy imports. No CLAUDE.md configuration required — the tool teaches itself.
+
+Admins can customize the protocol per-instance by writing to the `system_config['agent_protocol']` row via the dashboard or the REST endpoint:
+
+```bash
+curl -X PUT http://your-server:4320/admin/api/protocol \
+  -H "X-API-Key: $STRATA_ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"protocol": "...your custom instructions..."}'
+```
+
+Send an empty string to reset to the default.
 
 ### Any HTTP client
 
