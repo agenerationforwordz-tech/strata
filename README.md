@@ -128,8 +128,8 @@ First, register the agent at `http://your-server:4320/admin/agents` and copy its
 Strata ships as a Claude Code plugin. Add the marketplace once, then install:
 
 ```bash
-claude plugin marketplace add agenerationforwordz-tech/strata-plugins
-claude plugin install strata@strata-plugins
+claude plugin marketplace add agenerationforwordz-tech/Strata-plugins
+claude plugin install strata@Strata-plugins
 ```
 
 During install you'll be prompted for two things:
