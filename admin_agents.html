@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Key Management — STRATA</title>
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: rgba(255,255,255,0.04);
+            --border: rgba(255,255,255,0.08);
+            --border-accent: rgba(255,255,255,0.15);
+            --text-primary: #e8e8ef;
+            --text-secondary: #8888a0;
+            --text-muted: #555570;
+            --accent-green: #34d399;
+            --accent-green-dim: rgba(52,211,153,0.15);
+            --accent-red: #f87171;
+            --accent-red-dim: rgba(248,113,113,0.15);
+            --accent-blue: #60a5fa;
+            --accent-blue-dim: rgba(96,165,250,0.15);
+            --accent-amber: #fbbf24;
+            --accent-amber-dim: rgba(251,191,36,0.15);
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+        #auth-gate {
+            display: flex; align-items: center; justify-content: center;
+            min-height: 100vh; padding: 20px;
+        }
+        #auth-gate.hidden { display: none; }
+        .auth-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 40px; text-align: center;
+            max-width: 400px; width: 100%;
+            backdrop-filter: blur(20px);
+        }
+        .auth-icon { font-size: 48px; margin-bottom: 16px; }
+        .auth-title { font-size: 20px; font-weight: 600; letter-spacing: 2px; margin-bottom: 8px; }
+        .auth-subtitle { color: var(--text-secondary); font-size: 13px; margin-bottom: 24px; }
+        .auth-input {
+            width: 100%; padding: 12px 16px; background: var(--bg-secondary);
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            color: var(--text-primary); font-size: 14px; outline: none;
+            margin-bottom: 12px;
+        }
+        .auth-input:focus { border-color: var(--accent-blue); }
+        .auth-input::placeholder { color: var(--text-muted); }
+        .auth-btn {
+            width: 100%; padding: 12px; background: var(--accent-blue);
+            color: #000; border: none; border-radius: var(--radius-sm);
+            font-size: 14px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .auth-btn:hover { filter: brightness(1.15); }
+        .auth-error { color: var(--accent-red); font-size: 13px; margin-top: 12px; min-height: 20px; }
+
+        #main { display: none; padding: 24px; max-width: 1000px; margin: 0 auto; }
+        #main.visible { display: block; }
+
+        .page-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 32px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
+        }
+        .page-header h1 { font-size: 22px; font-weight: 600; letter-spacing: 1px; }
+        .page-header .back-link {
+            color: var(--text-secondary); text-decoration: none; font-size: 13px;
+        }
+        .page-header .back-link:hover { color: var(--text-primary); }
+
+        .stats-bar { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+        .stat-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); padding: 12px 20px;
+            flex: 1; min-width: 120px; text-align: center;
+        }
+        .stat-value { font-size: 24px; font-weight: 700; }
+        .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+        .stat-green .stat-value { color: var(--accent-green); }
+        .stat-red .stat-value { color: var(--accent-red); }
+        .stat-blue .stat-value { color: var(--accent-blue); }
+
+        .add-form {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 20px; margin-bottom: 24px;
+        }
+        .add-form h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: var(--accent-blue); }
+        .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+        .form-group { display: flex; flex-direction: column; gap: 4px; }
+        .form-group label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-group input[type="text"] {
+            padding: 8px 12px; background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); color: var(--text-primary); font-size: 13px; outline: none;
+        }
+        .form-group input[type="text"]:focus { border-color: var(--accent-blue); }
+        .btn-add {
+            padding: 8px 20px; background: var(--accent-green); color: #000;
+            border: none; border-radius: var(--radius-sm); font-size: 13px;
+            font-weight: 600; cursor: pointer; white-space: nowrap;
+        }
+        .btn-add:hover { filter: brightness(1.15); }
+
+        .agent-list { display: flex; flex-direction: column; gap: 12px; }
+        .agent-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 20px; transition: all 0.2s;
+        }
+        .agent-card:hover { border-color: var(--border-accent); }
+        .agent-card.disabled { opacity: 0.5; }
+
+        .agent-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .agent-name { font-size: 16px; font-weight: 600; }
+        .agent-status {
+            font-size: 11px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 1px; padding: 4px 10px; border-radius: 20px;
+        }
+        .agent-status.active { background: var(--accent-green-dim); color: var(--accent-green); }
+        .agent-status.inactive { background: var(--accent-red-dim); color: var(--accent-red); }
+
+        .agent-key-row {
+            display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+            background: var(--bg-secondary); padding: 8px 12px; border-radius: var(--radius-sm);
+            font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px;
+            color: var(--text-secondary);
+        }
+        .agent-key-row .key-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .btn-copy, .btn-reveal {
+            padding: 4px 10px; background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 4px; color: var(--text-secondary); font-size: 11px;
+            cursor: pointer; white-space: nowrap;
+        }
+        .btn-copy:hover, .btn-reveal:hover { color: var(--text-primary); border-color: var(--border-accent); }
+
+        .agent-perms { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+        .perm-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+        .perm-toggle .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        .toggle {
+            width: 40px; height: 22px; background: var(--bg-secondary);
+            border: 1px solid var(--border); border-radius: 11px;
+            position: relative; cursor: pointer; transition: all 0.3s;
+        }
+        .toggle.on { background: var(--accent-green-dim); border-color: var(--accent-green); }
+        .toggle .knob {
+            width: 16px; height: 16px; background: var(--text-secondary);
+            border-radius: 50%; position: absolute; top: 2px; left: 2px;
+            transition: all 0.3s;
+        }
+        .toggle.on .knob { left: 20px; background: var(--accent-green); }
+        .perm-toggle.delete-perm .toggle.on { background: var(--accent-red-dim); border-color: var(--accent-red); }
+        /* Admin toggle gets gold styling — stands out as highest privilege */
+        .perm-toggle.admin-perm .toggle.on { background: rgba(251,191,36,0.15); border-color: #fbbf24; }
+        .perm-toggle.admin-perm .toggle.on .knob { background: #fbbf24; }
+
+        .perm-toggle.delete-perm .toggle.on .knob { background: var(--accent-red); }
+        .perm-toggle.master-toggle .toggle.on { background: var(--accent-blue-dim); border-color: var(--accent-blue); }
+        .perm-toggle.master-toggle .toggle.on .knob { background: var(--accent-blue); }
+
+        .agent-meta {
+            display: flex; gap: 16px; font-size: 11px; color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+        .agent-actions { display: flex; gap: 8px; }
+        .btn-regen {
+            padding: 6px 12px; background: var(--accent-amber-dim); color: var(--accent-amber);
+            border: 1px solid rgba(251,191,36,0.3); border-radius: var(--radius-sm);
+            font-size: 11px; cursor: pointer;
+        }
+        .btn-regen:hover { filter: brightness(1.2); }
+        .btn-delete {
+            padding: 6px 12px; background: var(--accent-red-dim); color: var(--accent-red);
+            border: 1px solid rgba(248,113,113,0.3); border-radius: var(--radius-sm);
+            font-size: 11px; cursor: pointer;
+        }
+        .btn-delete:hover { filter: brightness(1.2); }
+
+        .toast {
+            position: fixed; bottom: 24px; right: 24px; padding: 12px 20px;
+            background: var(--bg-card); border: 1px solid var(--accent-green);
+            border-radius: var(--radius-sm); color: var(--accent-green);
+            font-size: 13px; opacity: 0; transition: opacity 0.3s;
+            pointer-events: none; backdrop-filter: blur(20px);
+        }
+        .toast.show { opacity: 1; }
+        .toast.error { border-color: var(--accent-red); color: var(--accent-red); }
+
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+        .empty-state p { font-size: 14px; }
+
+        /* ============================================================
+           GLOBAL MCP KILL SWITCH — the first thing you see.
+           One toggle to rule them all. Flip it OFF and every agent
+           loses MCP access instantly. Flip it back ON to restore.
+           This is the human's emergency brake.
+           ============================================================ */
+        .kill-switch-panel {
+            background: linear-gradient(135deg, rgba(96,165,250,0.08) 0%, rgba(52,211,153,0.04) 100%);
+            border: 2px solid rgba(96,165,250,0.25);
+            border-radius: var(--radius);
+            padding: 24px 28px;
+            margin-bottom: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            transition: all 0.4s ease;
+        }
+        .kill-switch-panel.mcp-off {
+            background: linear-gradient(135deg, rgba(248,113,113,0.12) 0%, rgba(248,113,113,0.04) 100%);
+            border-color: rgba(248,113,113,0.4);
+        }
+        .kill-switch-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .kill-switch-icon {
+            font-size: 32px;
+            width: 52px;
+            height: 52px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(96,165,250,0.1);
+            border-radius: 50%;
+            transition: all 0.4s;
+        }
+        .kill-switch-panel.mcp-off .kill-switch-icon {
+            background: rgba(248,113,113,0.15);
+        }
+        .kill-switch-title {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+        }
+        .kill-switch-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+        .kill-switch-panel.mcp-off .kill-switch-desc {
+            color: var(--accent-red);
+            font-weight: 600;
+        }
+        .kill-switch-right {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .kill-switch-status {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            padding: 6px 16px;
+            border-radius: 20px;
+            transition: all 0.4s;
+        }
+        .kill-switch-status.on {
+            background: var(--accent-green-dim);
+            color: var(--accent-green);
+        }
+        .kill-switch-status.off {
+            background: var(--accent-red-dim);
+            color: var(--accent-red);
+        }
+        /* Big toggle for the kill switch — 60x32 instead of the normal 40x22 */
+        .kill-toggle {
+            width: 60px;
+            height: 32px;
+            background: var(--bg-secondary);
+            border: 2px solid var(--border);
+            border-radius: 16px;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.4s;
+        }
+        .kill-toggle.on {
+            background: var(--accent-green-dim);
+            border-color: var(--accent-green);
+        }
+        .kill-toggle .knob {
+            width: 24px;
+            height: 24px;
+            background: var(--text-secondary);
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: all 0.4s;
+        }
+        .kill-toggle.on .knob {
+            left: 32px;
+            background: var(--accent-green);
+        }
+
+
+        /* Dead Man's Switch — per-agent emergency shutdown permission */
+        .perm-toggle.kill-perm .toggle.on { background: rgba(239,68,68,0.2); border-color: #ef4444; }
+        .perm-toggle.kill-perm .toggle.on .knob { background: #ef4444; }
+        .perm-toggle.kill-perm .label { font-size: 10px; letter-spacing: 0.3px; }
+
+        /* === Per-agent color identity ===========================================
+           Each agent gets a color that the constellation viewer uses to render
+           its activity. The swatch sits in the agent header next to the name —
+           click it to open the native color picker, the change saves to the
+           DB immediately via PUT /admin/api/agents/<id>. */
+        .agent-color-swatch {
+            display: inline-block;
+            width: 18px; height: 18px; border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.15);
+            cursor: pointer; vertical-align: middle;
+            margin-right: 10px;
+            transition: transform 0.15s, border-color 0.2s;
+            position: relative; overflow: hidden;
+        }
+        .agent-color-swatch:hover { transform: scale(1.15); border-color: rgba(255,255,255,0.45); }
+        .agent-color-swatch input[type="color"] {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            opacity: 0; cursor: pointer; border: 0; padding: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="auth-gate">
+        <div class="auth-card">
+            <div class="auth-icon">&#x1f511;</div>
+            <div class="auth-title">AGENT KEY MANAGEMENT</div>
+            <div class="auth-subtitle">Admin access required to manage agent API keys</div>
+            <input type="password" id="auth-key" class="auth-input" placeholder="Enter admin key..." autofocus>
+            <button id="auth-submit" class="auth-btn">Authenticate</button>
+            <div id="auth-error" class="auth-error"></div>
+        </div>
+    </div>
+
+    <div id="main">
+        <div class="page-header">
+            <h1>&#x1f511; AGENT KEYS</h1>
+            <a href="/dashboard" class="back-link" style="font-weight:700;letter-spacing:2px;">STRATA</a>
+        </div>
+
+        <!-- ============================================================
+             GLOBAL MCP KILL SWITCH — top of the page, unmissable.
+             One toggle controls ALL incoming MCP tool calls.
+             OFF = every agent is locked out, no exceptions.
+             This is the human's emergency brake for rogue agents.
+             ============================================================ -->
+        <div class="kill-switch-panel" id="kill-switch-panel">
+            <div class="kill-switch-left">
+                <div class="kill-switch-icon" id="kill-switch-icon">&#x1f6e1;</div>
+                <div>
+                    <div class="kill-switch-title">MCP Access Control</div>
+                    <div class="kill-switch-desc" id="kill-switch-desc">All registered agents can reach this server via MCP</div>
+                </div>
+            </div>
+            <div class="kill-switch-right">
+                <span class="kill-switch-status on" id="kill-switch-label">ACTIVE</span>
+                <div class="kill-toggle on" id="kill-toggle" onclick="toggleGlobalMCP()">
+                    <div class="knob"></div>
+                </div>
+            </div>
+        </div>
+
+
+
+        <div class="stats-bar">
+            <div class="stat-card stat-blue">
+                <div class="stat-value" id="stat-total">0</div>
+                <div class="stat-label">Total Agents</div>
+            </div>
+            <div class="stat-card stat-green">
+                <div class="stat-value" id="stat-active">0</div>
+                <div class="stat-label">Active</div>
+            </div>
+            <div class="stat-card stat-red">
+                <div class="stat-value" id="stat-disabled">0</div>
+                <div class="stat-label">Disabled</div>
+            </div>
+        </div>
+
+        <div class="add-form">
+            <h3>+ Register New Agent</h3>
+            <div class="form-row">
+                <div class="form-group" style="flex:2">
+                    <label>Agent Name</label>
+                    <input type="text" id="new-agent-name" placeholder="e.g. claude-code-surface, vox, nightly-agent">
+                </div>
+                <div class="form-group" style="flex:1">
+                    <label>Notes (optional)</label>
+                    <input type="text" id="new-agent-notes" placeholder="e.g. Surface laptop instance">
+                </div>
+                <button class="btn-add" id="btn-create">Create Agent</button>
+            </div>
+        </div>
+
+        <div class="agent-list" id="agent-list">
+            <div class="empty-state">
+                <div class="icon">&#x1f916;</div>
+                <p>No agents registered yet. Create one above.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+    var state = { adminKey: '', agents: [] };
+
+    function apiCall(method, path, body) {
+        var opts = {
+            method: method,
+            headers: {
+                'X-Admin-Key': state.adminKey,
+                'Content-Type': 'application/json'
+            }
+        };
+        if (body) opts.body = JSON.stringify(body);
+        return fetch(path, opts);
+    }
+
+    function showToast(msg, isError) {
+        var el = document.getElementById('toast');
+        el.textContent = msg;
+        el.className = isError ? 'toast error show' : 'toast show';
+        setTimeout(function() { el.className = 'toast'; }, 3000);
+    }
+
+    function esc(s) {
+        var d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+
+    // authenticate() is defined below near the kill switch code
+    // so it can also load the global MCP state after auth succeeds
+    function authenticate() {} // placeholder — overridden below
+
+    function loadAgents(agents) {
+        state.agents = agents;
+        var total = agents.length;
+        var active = agents.filter(function(a) { return a.enabled; }).length;
+        document.getElementById('stat-total').textContent = total;
+        document.getElementById('stat-active').textContent = active;
+        document.getElementById('stat-disabled').textContent = total - active;
+
+        var list = document.getElementById('agent-list');
+        if (!agents.length) {
+            list.innerHTML = '<div class="empty-state"><div class="icon">&#x1f916;</div><p>No agents registered yet. Create one above.</p></div>';
+            return;
+        }
+
+        var html = '';
+        for (var i = 0; i < agents.length; i++) {
+            var a = agents[i];
+            var lastUsed = a.last_used ? new Date(a.last_used).toLocaleString() : 'Never';
+            var created = new Date(a.created_at).toLocaleDateString();
+            // Render color swatch with native color picker — clicking the
+            // swatch opens the picker, change saves immediately. Falls back
+            // to a neutral grey if the agent has no color set yet.
+            var color = a.color || '#7a7aaa';
+            html += '<div class="agent-card ' + (a.enabled ? '' : 'disabled') + '" data-id="' + a.id + '">'
+                + '<div class="agent-header">'
+                + '<span style="display:flex;align-items:center">'
+                + '<label class="agent-color-swatch" style="background:' + esc(color) + '" title="Change agent color">'
+                + '<input type="color" value="' + esc(color) + '" onchange="setAgentColor(' + a.id + ', this.value)">'
+                + '</label>'
+                + '<span class="agent-name">' + esc(a.agent_name) + '</span>'
+                + '</span>'
+                + '<span class="agent-status ' + (a.enabled ? 'active' : 'inactive') + '">' + (a.enabled ? 'Active' : 'Disabled') + '</span>'
+                + '</div>'
+                + '<div class="agent-key-row">'
+                + '<span class="key-text" id="key-' + a.id + '">' + a.api_key_masked + '</span>'
+                + '<button class="btn-reveal" onclick="revealKey(' + a.id + ')">Reveal</button>'
+                + '<button class="btn-copy" onclick="copyKey(' + a.id + ')">Copy</button>'
+                + '</div>'
+                + '<div class="agent-perms">'
+                + '<div class="perm-toggle master-toggle" onclick="togglePerm(' + a.id + ',\'enabled\',' + (a.enabled ? 0 : 1) + ')">'
+                + '<div class="toggle ' + (a.enabled ? 'on' : '') + '"><div class="knob"></div></div>'
+                + '<span class="label">Enabled</span></div>'
+                + '<div class="perm-toggle" onclick="togglePerm(' + a.id + ',\'can_read\',' + (a.can_read ? 0 : 1) + ')">'
+                + '<div class="toggle ' + (a.can_read ? 'on' : '') + '"><div class="knob"></div></div>'
+                + '<span class="label">Read</span></div>'
+                + '<div class="perm-toggle" onclick="togglePerm(' + a.id + ',\'can_write\',' + (a.can_write ? 0 : 1) + ')">'
+                + '<div class="toggle ' + (a.can_write ? 'on' : '') + '"><div class="knob"></div></div>'
+                + '<span class="label">Write</span></div>'
+                + '<div class="perm-toggle delete-perm" onclick="togglePerm(' + a.id + ',\'can_delete\',' + (a.can_delete ? 0 : 1) + ')">'
+                + '<div class="toggle ' + (a.can_delete ? 'on' : '') + '"><div class="knob"></div></div>'
+                + '<span class="label">Delete</span></div>'
+                + '<div class="perm-toggle admin-perm" onclick="togglePerm(' + a.id + ',\'can_admin\',' + (a.can_admin ? 0 : 1) + ')">'
+                + '<div class="toggle ' + (a.can_admin ? 'on' : '') + '"><div class="knob"></div></div>'
+                + '<span class="label">Admin</span></div>'
+                + '<div class="perm-toggle kill-perm" onclick="togglePerm(' + a.id + ',\'can_kill\',' + (a.can_kill ? 0 : 1) + ')" title="Dead Man\'s Switch \u2014 allows this agent to trigger emergency MCP shutdown">'
+                + '<div class="toggle ' + (a.can_kill ? 'on' : '') + '"><div class="knob"></div></div>'
+                + '<span class="label">\u26A0 Dead Man\'s Switch</span></div>'
+                + '</div>'
+                + '<div class="agent-meta">'
+                + '<span>Created: ' + created + '</span>'
+                + '<span>Last used: ' + lastUsed + '</span>'
+                + (a.notes ? '<span>Notes: ' + esc(a.notes) + '</span>' : '')
+                + '</div>'
+                + '<div class="agent-actions">'
+                + '<button class="btn-regen" onclick="regenKey(' + a.id + ',\'' + esc(a.agent_name).replace(/'/g, "\\'") + '\')">Regenerate Key</button>'
+                + '<button class="btn-delete" onclick="deleteAgent(' + a.id + ',\'' + esc(a.agent_name).replace(/'/g, "\\'") + '\')">Revoke Agent</button>'
+                + '</div></div>';
+        }
+        list.innerHTML = html;
+    }
+
+    function togglePerm(id, field, value) {
+        var body = {};
+        body[field] = value;
+        apiCall('PUT', '/admin/api/agents/' + id, body)
+            .then(function(resp) {
+                if (resp.ok) {
+                    showToast(field + ' ' + (value ? 'ON' : 'OFF'));
+                    refresh();
+                } else { showToast('Update failed', true); }
+            });
+    }
+
+    // Save the picked color directly without refreshing the whole list —
+    // refreshing closes the color picker before the user is done dragging.
+    // We update the swatch's background in place so it feels instant, then
+    // PUT to the server. The next refresh() (after a perm toggle, etc.)
+    // pulls the persisted value back from the DB.
+    function setAgentColor(id, color) {
+        var card = document.querySelector('.agent-card[data-id="' + id + '"]');
+        if (card) {
+            var swatch = card.querySelector('.agent-color-swatch');
+            if (swatch) swatch.style.background = color;
+        }
+        apiCall('PUT', '/admin/api/agents/' + id, { color: color })
+            .then(function(resp) {
+                if (!resp.ok) { showToast('Color save failed', true); }
+            })
+            .catch(function() { showToast('Connection error', true); });
+    }
+
+    function revealKey(id) {
+        apiCall('GET', '/admin/api/agents/' + id)
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.agent) document.getElementById('key-' + id).textContent = data.agent.api_key;
+            });
+    }
+
+    function copyKey(id) {
+        apiCall('GET', '/admin/api/agents/' + id)
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.agent) {
+                    navigator.clipboard.writeText(data.agent.api_key);
+                    showToast('Key copied to clipboard');
+                }
+            });
+    }
+
+    function regenKey(id, name) {
+        if (!confirm('Regenerate API key for "' + name + '"? The old key stops working immediately.')) return;
+        apiCall('POST', '/admin/api/agents/' + id + '/regenerate')
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.new_key) {
+                    showToast('New key generated');
+                    document.getElementById('key-' + id).textContent = data.new_key;
+                    refresh();
+                } else { showToast('Regenerate failed', true); }
+            });
+    }
+
+    function deleteAgent(id, name) {
+        if (!confirm('Permanently revoke "' + name + '"? Cannot be undone.')) return;
+        apiCall('DELETE', '/admin/api/agents/' + id)
+            .then(function(resp) {
+                if (resp.ok) { showToast('Agent revoked'); refresh(); }
+                else { showToast('Delete failed', true); }
+            });
+    }
+
+    function createAgent() {
+        var name = document.getElementById('new-agent-name').value.trim();
+        var notes = document.getElementById('new-agent-notes').value.trim();
+        if (!name) { showToast('Agent name required', true); return; }
+        apiCall('POST', '/admin/api/agents', { agent_name: name, notes: notes })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.agent) {
+                    showToast('Agent created!');
+                    document.getElementById('new-agent-name').value = '';
+                    document.getElementById('new-agent-notes').value = '';
+                    refresh();
+                } else { showToast(data.error || 'Create failed', true); }
+            });
+    }
+
+    function refresh() {
+        apiCall('GET', '/admin/api/agents')
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) { loadAgents(data.agents || []); });
+    }
+
+    document.getElementById('auth-submit').addEventListener('click', authenticate);
+    document.getElementById('auth-key').addEventListener('keydown', function(e) { if (e.key === 'Enter') authenticate(); });
+    document.getElementById('btn-create').addEventListener('click', createAgent);
+    document.getElementById('new-agent-name').addEventListener('keydown', function(e) { if (e.key === 'Enter') createAgent(); });
+
+    // ============================================================
+    // GLOBAL MCP KILL SWITCH
+    // Hits /admin/api/mcp-toggle to flip a server-side flag.
+    // When OFF, the MCP auth middleware rejects ALL incoming
+    // tool calls �� no agent can read, write, or do anything.
+    // The human flips it back ON when ready.
+    // ============================================================
+
+    var mcpGlobalEnabled = true;  // Start assuming ON, server confirms on load
+
+    function toggleGlobalMCP() {
+        var newState = !mcpGlobalEnabled;
+        apiCall('PUT', '/admin/api/mcp-toggle', { enabled: newState })
+            .then(function(resp) {
+                if (resp.ok) {
+                    mcpGlobalEnabled = newState;
+                    updateKillSwitchUI();
+                    showToast(newState ? 'MCP access restored — agents can connect' : 'MCP access CUT — all agents locked out');
+                } else {
+                    showToast('Failed to toggle MCP access', true);
+                }
+            })
+            .catch(function() { showToast('Connection error', true); });
+    }
+
+    function updateKillSwitchUI() {
+        var panel = document.getElementById('kill-switch-panel');
+        var toggle = document.getElementById('kill-toggle');
+        var label = document.getElementById('kill-switch-label');
+        var desc = document.getElementById('kill-switch-desc');
+        var icon = document.getElementById('kill-switch-icon');
+
+        if (mcpGlobalEnabled) {
+            panel.className = 'kill-switch-panel';
+            toggle.className = 'kill-toggle on';
+            label.className = 'kill-switch-status on';
+            label.textContent = 'ACTIVE';
+            desc.textContent = 'All registered agents can reach this server via MCP';
+            icon.innerHTML = '&#x1f6e1;';  // shield
+        } else {
+            panel.className = 'kill-switch-panel mcp-off';
+            toggle.className = 'kill-toggle';
+            label.className = 'kill-switch-status off';
+            label.textContent = 'BLOCKED';
+            desc.textContent = 'ALL MCP access is cut — no agent can reach this server';
+            icon.innerHTML = '&#x1f6ab;';  // no entry
+        }
+    }
+
+    function loadGlobalMCPState() {
+        // Fetch current global MCP state from server. Called on page load
+        // AND on a 3-second interval so the UI reflects flips that happened
+        // from other agents/admins without forcing the user to refresh.
+        apiCall('GET', '/admin/api/mcp-toggle')
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                var newState = data.enabled !== false;  // default to ON
+                if (newState !== mcpGlobalEnabled) {
+                    // State changed from outside this tab — show a toast so
+                    // the human knows something flipped while they weren't
+                    // looking. Without this the UI just silently re-renders.
+                    showToast(newState ? 'MCP access turned ON elsewhere' : 'MCP access turned OFF elsewhere');
+                }
+                mcpGlobalEnabled = newState;
+                updateKillSwitchUI();
+            })
+            .catch(function() {
+                // If endpoint doesn't exist yet, default to ON
+                mcpGlobalEnabled = true;
+                updateKillSwitchUI();
+            });
+    }
+
+    // Poll the kill switch state every 3 seconds so the admin panel always
+    // reflects reality even when an agent (not the local UI) flipped it.
+    // 3s is fast enough to feel live, slow enough to avoid log spam.
+    setInterval(loadGlobalMCPState, 3000);
+
+
+
+    // Load global MCP state after auth succeeds
+    var _origAuthenticate = authenticate;
+    authenticate = function() {
+        var key = document.getElementById('auth-key').value.trim();
+        var errEl = document.getElementById('auth-error');
+        if (!key) { errEl.textContent = 'Enter the admin key'; return; }
+        errEl.textContent = 'Authenticating...';
+        fetch('/admin/api/agents', { headers: { 'X-Admin-Key': key } })
+            .then(function(resp) {
+                if (resp.ok) {
+                    state.adminKey = key;
+                    sessionStorage.setItem('agent-admin-key', key);
+                    document.getElementById('auth-gate').classList.add('hidden');
+                    document.getElementById('main').classList.add('visible');
+                    loadGlobalMCPState();
+        // Kill switch state already loaded by loadGlobalMCPState() above
+                    return resp.json();
+                } else {
+                    errEl.textContent = 'Invalid admin key';
+                    return null;
+                }
+            })
+            .then(function(data) {
+                if (data) loadAgents(data.agents || []);
+            })
+            .catch(function() { errEl.textContent = 'Connection failed'; });
+    };
+
+    // DEMO MODE: skip the password gate entirely — auto-authenticate
+    // so users can see the kill switch and agent controls immediately.
+    // In a real instance, the admin key protects this page.
+    state.adminKey = 'demo-admin-key-2026';
+    document.getElementById('auth-gate').classList.add('hidden');
+    document.getElementById('main').classList.add('visible');
+    loadGlobalMCPState();
+    refresh();
+    </script>
+</body>
+</html>

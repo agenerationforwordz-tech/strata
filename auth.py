@@ -16,9 +16,10 @@ import secrets
 import sqlite3
 from datetime import datetime, timedelta
 
-from config import DATA_DIR
-
-DB_PATH = os.path.join(DATA_DIR, "brain.db")
+# Import DB_PATH from config so the filename-resolution logic lives in
+# exactly one place. Earlier versions duplicated this constant across
+# modules, which meant any rename in config silently drifted out of sync.
+from config import DATA_DIR, DB_PATH
 
 # PBKDF2 config - 480K iterations balances security vs Pi CPU speed.
 # On a Pi 4B this takes ~0.3s per hash which is fine for login but

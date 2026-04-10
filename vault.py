@@ -19,7 +19,7 @@
 #
 # For the product vision (selling pre-built units), the vault IS the product.
 # The SSD/HDD holds all your files, organized and searchable by meaning.
-# The brain.db is tiny - the vault is what fills the drive.
+# The strata.db is tiny - the vault is what fills the drive.
 
 import base64
 import hashlib

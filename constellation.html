@@ -1,0 +1,2259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STRATA — Constellation</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
+    background: #0a0a14;
+    color: #d4d4e0;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* === TOP: 3D Constellation === */
+#constellation-pane {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    cursor: crosshair;
+}
+
+#constellation-pane canvas { display: block; width: 100% !important; height: 100% !important; }
+
+#overlay-stats {
+    position: absolute; top: 16px; left: 20px;
+    font-size: 15px; color: #5a5a7a; line-height: 1.8;
+    pointer-events: none; z-index: 10;
+}
+#overlay-stats .label { color: #3a3a5a; }
+#overlay-stats .value { color: #7a7aaa; }
+#overlay-stats .highlight { color: #00e5ff; text-shadow: 0 0 8px #00e5ff44; }
+
+#brand {
+    /* Tap target hardening: padding gives the touch hitbox real area on tablets
+       (Apple/Material both call for ≥44x44px). Higher z-index keeps it above
+       the flower-slider which also sits at 50. touch-action: manipulation kills
+       the 300ms double-tap delay on touchscreens. */
+    position: absolute; top: 8px; right: 12px;
+    font-size: 17px; font-weight: 900; letter-spacing: 4px;
+    color: rgba(255,255,255,0.15); pointer-events: auto; z-index: 60;
+    cursor: pointer; text-decoration: none;
+    padding: 12px 14px; min-height: 44px; min-width: 44px;
+    display: inline-flex; align-items: center; justify-content: center;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(126,184,218,0.25);
+    transition: color 0.3s, text-shadow 0.3s;
+    user-select: none;
+}
+#brand:hover {
+    color: rgba(255,255,255,0.45);
+    text-shadow: 0 0 20px rgba(126,184,218,0.3);
+}
+
+/* === MCP kill switch indicator =============================================
+   ACTIVE state: tiny green text top-center, no border, no background — just
+   "MCP CONNECTED" so the user can confirm the system is up at a glance
+   without anything competing visually with the actual constellation.
+
+   DISABLED state: the WHOLE constellation goes silver-grey via a CSS filter
+   (50 shades of grey, the way it was always supposed to look), the auto-spin
+   slows almost to a halt, and a centered overlay says "MCP DISCONNECTED" with
+   the actor name underneath in their assigned color. The pill itself becomes
+   dim grey too. The visual is hard to miss but doesn't scream "ERROR" — it
+   feels like the system is sleeping, not broken. */
+#kill-pill {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    z-index: 55; pointer-events: none;
+    font-size: 10px; font-weight: 600; letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(52,211,153,0.65);  /* soft green, no shadow, no border, no bg */
+    user-select: none;
+    transition: color 0.6s, opacity 0.6s;
+    opacity: 0;  /* Hidden until first poll lands */
+}
+#kill-pill.visible { opacity: 1; }
+#kill-pill.off {
+    color: rgba(160,160,180,0.75);  /* muted grey when disabled */
+}
+
+/* The centered overlay only renders when MCP is OFF. Big quiet grey letters
+   in the dead center of the constellation pane, with the actor name below.
+   pointer-events: none so it doesn't block clicks/taps to the canvas. */
+#kill-overlay {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 35; pointer-events: none;
+    text-align: center; opacity: 0;
+    transition: opacity 0.8s;
+}
+#kill-overlay.visible { opacity: 1; }
+#kill-overlay .kill-overlay-title {
+    font-size: 38px; font-weight: 200; letter-spacing: 12px;
+    color: rgba(180,180,200,0.55);
+    text-shadow: 0 0 30px rgba(0,0,0,0.6);
+    margin-bottom: 14px;
+}
+#kill-overlay .kill-overlay-actor {
+    font-size: 11px; font-weight: 600; letter-spacing: 4px;
+    text-transform: uppercase;
+    color: rgba(200,200,220,0.55);
+}
+#kill-overlay .kill-overlay-actor .name {
+    /* color set inline by JS — defaults to muted grey when no actor color */
+    color: rgba(220,220,240,0.85);
+}
+
+/* When the pane is in mcp-off mode, desaturate the whole 3D scene + canvases.
+   The CSS filter cascades to the WebGL canvas inside #constellation-pane and
+   to the FOL canvas. Auto-rotation slowdown is handled in JS, not CSS. */
+#constellation-pane.mcp-off {
+    filter: grayscale(0.92) brightness(0.55);
+    transition: filter 1.2s;
+}
+#constellation-pane:not(.mcp-off) {
+    filter: none;
+    transition: filter 0.6s;
+}
+
+/* Thought ID labels floating over matched stars */
+.thought-label {
+    position: absolute; pointer-events: none; z-index: 15;
+    font-size: 10px; font-weight: 700; text-align: center;
+    line-height: 22px; min-width: 40px; height: 22px; padding: 0 6px;
+    border-radius: 11px; background: #0d0d1acc; border: 1px solid;
+    backdrop-filter: blur(4px); transition: opacity 0.4s;
+    transform: translate(-50%, -130%);
+}
+
+/* Agent nametag — spawns in the constellation when an agent queries.
+   No box, no background — just letters. The text glow + per-agent color
+   does all the visual work. Looks more like a constellation label and
+   less like a tooltip. */
+.agent-nametag {
+    position: absolute; pointer-events: none; z-index: 20;
+    font-size: 16px; font-weight: 900; letter-spacing: 3px;
+    text-transform: uppercase; white-space: nowrap;
+    padding: 0;
+    background: transparent; border: none;
+    text-shadow: 0 0 12px currentColor, 0 0 24px rgba(0,0,0,0.6);
+    transform: translate(-50%, -50%);
+    animation: nametagSpawn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes nametagSpawn {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
+    60% { transform: translate(-50%, -50%) scale(1.1); }
+    100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* Agent beam overlay canvas — sits on top of Three.js for glowing lines */
+#agent-overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 13;
+}
+
+#query-banner {
+    position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; color: #3a3a5a; pointer-events: none; z-index: 10;
+    text-align: center; transition: all 0.5s; line-height: 1.6;
+    max-width: 90%; white-space: normal;
+}
+#query-banner.active { color: #00e5ff; text-shadow: 0 0 12px #00e5ff66; }
+#query-banner.error { color: #ff4444; text-shadow: 0 0 12px #ff444466; }
+
+#conn-status {
+    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+    font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+    z-index: 10; pointer-events: none;
+}
+#conn-status.connected { color: #2a4a2a; }
+#conn-status.disconnected { color: #ff4444; text-shadow: 0 0 8px #ff444466; }
+#conn-status.loading { color: #ffd700; }
+
+#legend {
+    position: absolute; top: 60px; right: 12px; bottom: 120px;
+    font-size: 11px; pointer-events: none; z-index: 10;
+    display: flex; flex-direction: column; justify-content: flex-start;
+    gap: 2px; overflow-y: auto; padding-right: 4px;
+}
+#legend div {
+    display: flex; align-items: center; gap: 6px; padding: 2px 6px;
+    opacity: 0.7; border-radius: 3px; white-space: nowrap;
+    transition: opacity 0.2s;
+}
+#legend div:hover { opacity: 1; background: rgba(255,255,255,0.05); pointer-events: auto; cursor: pointer; }
+#legend .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+#legend .count { color: #666; font-size: 10px; margin-left: auto; }
+
+/* === BOTTOM: Interactive Panel === */
+#interactive-pane {
+    height: 110px; min-height: 80px; background: #0d0d1a;
+    display: flex; flex-direction: column; border-top: 1px solid #1a1b3a;
+    transition: height 0.3s ease;
+}
+#interactive-pane.expanded { height: 28vh; }
+
+#search-bar {
+    display: flex; align-items: center; padding: 6px 16px; gap: 10px;
+    border-bottom: 1px solid #14142a; flex-shrink: 0;
+}
+#search-bar label { font-size: 11px; color: #4a4a6a; letter-spacing: 2px; text-transform: uppercase; white-space: nowrap; }
+
+#search-input {
+    flex: 1; background: #0a0a18; border: 1px solid #2a2a4a; border-radius: 4px;
+    padding: 6px 12px; color: #d4d4e0; font-family: inherit; font-size: 13px;
+    outline: none; transition: border-color 0.3s;
+}
+#search-input:focus { border-color: #00e5ff; box-shadow: 0 0 8px #00e5ff22; }
+#search-input::placeholder { color: #2a2a4a; }
+
+.bar-btn {
+    border-radius: 4px; padding: 8px 14px; font-family: inherit; font-size: 12px;
+    cursor: pointer; letter-spacing: 1px; transition: all 0.2s; border: 1px solid;
+}
+#search-btn { background: #00e5ff11; border-color: #00e5ff44; color: #00e5ff; }
+#search-btn:hover { background: #00e5ff22; border-color: #00e5ff88; }
+#home-btn { background: #ffffff08; border-color: #3a3a5a; color: #5a5a7a; }
+#home-btn:hover { background: #ffffff15; border-color: #7a7aaa; color: #aaaacc; }
+.hidden { display: none !important; }
+
+/* Results list */
+#results-area {
+    flex: 1; overflow-y: auto; padding: 4px 16px; font-size: 11px;
+ font-size: 13px;}
+#results-area::-webkit-scrollbar { width: 4px; }
+#results-area::-webkit-scrollbar-track { background: #0d0d1a; }
+#results-area::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 2px; }
+
+.result-item {
+    padding: 6px 0; border-bottom: 1px solid #0f0f22;
+    display: flex; gap: 10px; align-items: flex-start;
+    cursor: pointer; transition: background 0.2s;
+}
+.result-item:hover { background: #12122a; }
+.result-id { font-size: 10px; color: #3a3a5a; min-width: 30px; text-align: right; }
+.result-type {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 1px;
+    min-width: 60px; padding: 2px 6px; border-radius: 3px; text-align: center;
+}
+.result-text { color: #8a8aaa; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.result-score { font-size: 10px; color: #3a3a5a; min-width: 40px; text-align: right; }
+
+/* Expanded thought detail view */
+#thought-detail {
+    padding: 16px 20px; overflow-y: auto; flex: 1;
+}
+#thought-detail .td-header {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+    border-bottom: 1px solid #1a1a3a; padding-bottom: 10px;
+}
+#thought-detail .td-id { font-size: 18px; font-weight: 700; }
+#thought-detail .td-type {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 2px;
+    padding: 3px 10px; border-radius: 10px;
+}
+#thought-detail .td-back {
+    margin-left: auto; cursor: pointer; color: #5a5a7a; font-size: 11px;
+    padding: 4px 10px; border: 1px solid #2a2a4a; border-radius: 4px;
+    background: none; font-family: inherit; transition: all 0.2s;
+}
+#thought-detail .td-back:hover { border-color: #5a5a7a; color: #aaaacc; }
+#thought-detail .td-content { font-size: 13px;
+    color: #b0b0cc; line-height: 1.7; font-size: 12px; white-space: pre-wrap;
+    word-break: break-word;
+}
+#thought-detail .td-meta {
+    margin-top: 12px; font-size: 10px; color: #3a3a5a; line-height: 1.8;
+}
+#thought-detail .td-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+#thought-detail .td-tag {
+    font-size: 9px; padding: 2px 8px; border-radius: 8px;
+    background: #1a1a3a; color: #6a6a9a; border: 1px solid #2a2a4a;
+}
+
+/* Type colors */
+/* Flower of Life sacred geometry background — barely visible, more felt than seen.
+   Default opacity dropped to 0.08 because OLED panels render the stock 0.12 way too
+   bright (per-pixel emissive). The slider lets it go up to 60% if you want it louder. */
+#flower-canvas {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 1; opacity: 0.08;
+}
+
+/* Wallpaper mode — strip all UI, pure passive visualization */
+body.wallpaper #interactive-pane { display: none !important; }
+body.wallpaper #overlay-stats { display: none !important; }
+body.wallpaper #conn-status { display: none !important; }
+body.wallpaper #search-bar { display: none !important; }
+body.wallpaper #pause-btn { display: none !important; }
+body.wallpaper #reverse-btn { display: none !important; }
+body.wallpaper #constellation-pane { height: 100vh !important; }
+body.wallpaper #query-banner { bottom: 30px; }
+
+/* Wallpaper mode hint */
+#wallpaper-hint {
+    position: fixed;
+    bottom: 8px;
+    left: 12px;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #2a2a4a;
+    cursor: pointer;
+    z-index: 20;
+    transition: color 0.3s, text-shadow 0.3s;
+    user-select: none;
+}
+#wallpaper-hint:hover {
+    color: #00e5ff88;
+    text-shadow: 0 0 8px #00e5ff33;
+}
+body.wallpaper #wallpaper-hint { display: none; }
+body.wallpaper #flower-slider { opacity: 0.08 !important; transition: opacity 0.4s; }
+body.wallpaper #flower-slider:hover { opacity: 0.7 !important; }
+
+
+/* Zoom-dependent thought labels — appear as you get closer, like map plot numbers */
+.zoom-label {
+    position: absolute; pointer-events: none; z-index: 14;
+    font-size: 9px; font-weight: 600;
+    transform: translate(-50%, -180%);
+    white-space: nowrap;
+    text-shadow: 0 0 4px #0a0a14, 0 0 8px #0a0a14, 0 0 12px #0a0a14;
+    transition: opacity 0.3s;
+    letter-spacing: 0.5px;
+}
+
+.type-thought    { color: #00e5ff; background: #00e5ff15; border: 1px solid #00e5ff33; }
+.type-decision   { color: #ffd700; background: #ffd70015; border: 1px solid #ffd70033; }
+.type-session    { color: #4caf50; background: #4caf5015; border: 1px solid #4caf5033; }
+.type-person     { color: #ff6b9d; background: #ff6b9d15; border: 1px solid #ff6b9d33; }
+.type-insight    { color: #b388ff; background: #b388ff15; border: 1px solid #b388ff33; }
+.type-project    { color: #ff9800; background: #ff980015; border: 1px solid #ff980033; }
+.type-instruction{ color: #f44336; background: #f4433615; border: 1px solid #f4433633; }
+.type-reference  { color: #42a5f5; background: #42a5f515; border: 1px solid #42a5f533; }
+.type-observation{ color: #78909c; background: #78909c15; border: 1px solid #78909c33; }
+.type-idea       { color: #e040fb; background: #e040fb15; border: 1px solid #e040fb33; }
+</style>
+</head>
+<body>
+
+<div id="constellation-pane">
+    <canvas id="flower-canvas"></canvas>
+    <div id="overlay-stats">
+        <div><span class="label">THOUGHTS </span><span class="value" id="stat-total">—</span></div>
+        <div><span class="label">LOADED </span><span class="value" id="stat-loaded">—</span></div>
+        <div><span class="label">QUERY </span><span class="value" id="stat-query">idle</span></div>
+        <div><span class="label">RESULTS </span><span class="value" id="stat-results">—</span></div>
+        <div><span class="label">LATENCY </span><span class="value" id="stat-latency">—</span></div>
+        <div><span class="label">STREAM </span><span class="value" id="stat-stream">—</span></div>
+    </div>
+    <a id="brand" href="/dashboard" title="Back to Dashboard">STRATA</a>
+    <!-- Kill switch indicator — small text at top, dramatic centered overlay
+         when disabled. Both driven by applyKillSwitchState(). -->
+    <div id="kill-pill" title="Global MCP access state">MCP CONNECTED</div>
+    <div id="kill-overlay">
+        <div class="kill-overlay-title">MCP DISCONNECTED</div>
+        <div class="kill-overlay-actor">by <span class="name" id="kill-overlay-actor-name">—</span></div>
+    </div>
+    <div id="conn-status" class="loading">CONNECTING...</div>
+    <canvas id="agent-overlay"></canvas>
+    <div id="query-banner">Search below to watch the brain think</div>
+    <div id="legend"></div>
+    <div id="flower-slider" style="position:absolute;bottom:18px;right:20px;z-index:50;display:flex;flex-direction:column;gap:6px;opacity:0.6;transition:opacity 0.3s;pointer-events:auto;">
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:10px;color:#5a5a7a;letter-spacing:1px;min-width:24px">FOL</span>
+            <input type="range" id="flower-opacity" min="8" max="60" value="8" step="1"
+                style="width:90px;accent-color:#6a8aba;cursor:pointer;pointer-events:auto;" title="Flower of Life opacity">
+            <span id="flower-val" style="font-size:10px;color:#5a5a7a;min-width:28px">8%</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:10px;color:#5a5a7a;letter-spacing:1px;min-width:24px">HUE</span>
+            <input type="range" id="flower-hue" min="0" max="360" value="0" step="1"
+                style="width:90px;cursor:pointer;pointer-events:auto;accent-color:#8a6aba;" title="Flower of Life color">
+            <span id="flower-hue-val" style="font-size:10px;color:#5a5a7a;min-width:28px">0°</span>
+        </div>
+    </div>
+</div>
+
+<div id="wallpaper-hint" onclick="window.location.href='/constellation?mode=wallpaper'" title="Launch as live wallpaper — fullscreen, no UI">&#x2728; LIVE WALLPAPER MODE</div>
+
+<div id="interactive-pane">
+    <div id="search-bar">
+        <label>QUERY</label>
+        <input type="text" id="search-input" placeholder="search by meaning..." autocomplete="off" />
+        <button class="bar-btn" id="search-btn">SEARCH</button>
+        <button class="bar-btn hidden" id="home-btn">HOME</button>
+        <button class="bar-btn" id="pause-btn" title="Pause/Resume spin">⏸</button>
+        <button class="bar-btn" id="reverse-btn" title="Reverse rotation">⟲</button>
+    </div>
+    <div id="results-area">
+        <div style="color: #2a2a4a; padding: 20px; text-align: center;">
+            Type a query and watch the constellation respond
+        </div>
+    </div>
+    <div id="thought-detail" class="hidden"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// === STRATA CONSTELLATION ENGINE v3 ===
+// Real-time visualization of Strata's thought space.
+// Connects to live activity stream — watches agents think.
+// v3: Loads ALL thoughts via lightweight endpoint, agent spawn-in visualization.
+// Wallpaper mode: /constellation?mode=wallpaper (strips UI, adds Flower of Life)
+
+// Wallpaper mode detection
+const urlParams = new URLSearchParams(window.location.search);
+const isWallpaper = urlParams.get('mode') === 'wallpaper';
+if (isWallpaper) document.body.classList.add('wallpaper');
+
+const STRATA_BASE = window.location.origin;
+
+// Type colors (Three.js hex)
+const TYPE_COLORS = {
+    thought: 0x00e5ff, decision: 0xffd700, session: 0x4caf50,
+    person: 0xff7b5a, insight: 0xb388ff, project: 0xe68a00,
+    instruction: 0xf44336, reference: 0x42a5f5, observation: 0xc4a265, idea: 0xe040fb,
+};
+const TYPE_COLORS_CSS = {
+    thought: '#00e5ff', decision: '#ffd700', session: '#4caf50',
+    person: '#ff7b5a', insight: '#b388ff', project: '#e68a00',
+    instruction: '#f44336', reference: '#42a5f5', observation: '#c4a265', idea: '#e040fb',
+};
+
+// Agent/source colors — each agent gets a unique color identity.
+// AGENT_COLORS is the FALLBACK palette for sources we don't have a row for
+// in the agent_keys table (e.g. 'mcp', 'dashboard', 'unknown'). The live
+// per-agent colors are loaded from /admin/api/agents on page load and
+// stored in agentColorsLive — that map wins lookups when present, so
+// editing a color in the admin panel takes effect on the next constellation
+// reload without any code change.
+const AGENT_COLORS = {
+    'vox':          '#ff9800',  // orange
+    'surface':      '#64b5f6',  // baby blue
+    'helios':       '#4caf50',  // green
+    'cortex':       '#b388ff',  // purple
+    'mini':         '#ff6b9d',  // pink
+    'codex':        '#f44336',  // red
+    'claude-code':  '#64b5f6',  // baby blue (same as surface)
+    'telegram':     '#ff9800',  // orange (same as vox)
+    'dashboard':    '#ffd700',  // gold
+    'messenger-bot':'#ff9800',  // orange (vox's real source name)
+    'mcp':          '#7a7aaa',  // grey (unknown agent)
+};
+
+// Live per-agent colors loaded from the DB at page load. Lookup order is:
+//   agentColorsLive[name.toLowerCase()]   ← user-set color from admin panel
+//   AGENT_COLORS[name.toLowerCase()]      ← legacy hardcoded fallback
+//   AGENT_COLORS['mcp']                   ← grey "unknown agent" sentinel
+let agentColorsLive = {};
+
+function lookupAgentColor(source) {
+    if (!source) return AGENT_COLORS['mcp'];
+    const key = String(source).toLowerCase();
+    return agentColorsLive[key] || AGENT_COLORS[key] || AGENT_COLORS['mcp'];
+}
+
+async function loadAgentColors() {
+    // Public GET endpoint — same one the admin panel polls. Returns
+    // {agents: [...]}; we keep just name → color so the constellation
+    // doesn't have to know about permissions, kill flags, etc.
+    try {
+        const r = await fetch(`${STRATA_BASE}/admin/api/agents`);
+        if (!r.ok) return;
+        const data = await r.json();
+        const map = {};
+        (data.agents || []).forEach(a => {
+            if (a.color && a.agent_name) {
+                map[a.agent_name.toLowerCase()] = a.color;
+            }
+        });
+        agentColorsLive = map;
+    } catch (e) {
+        console.warn('Failed to load live agent colors:', e);
+    }
+}
+
+// Cluster positions — Fibonacci sphere for even 3D distribution of 20 clusters.
+// Each cluster gets its own region of 3D space. Stars spread within their cluster.
+const CLUSTER_POSITIONS = {
+    // Fibonacci sphere — golden ratio spacing for maximally even 3D distribution.
+    // Every cluster is ~34-36 units from its nearest neighbor. No crowding.
+    // Combined with dodecahedron vertex layout, this IS sacred geometry.
+    thought:     {x: 15.3, y: 31.5, z:  0.0},
+    instruction: {x:-18.4, y: 24.5, z:-16.9},
+    decision:    {x:  2.6, y: 17.5, z: 30.2},
+    reference:   {x: 20.3, y: 10.5, z:-26.5},
+    person:      {x:-34.3, y:  3.5, z:  6.1},
+    project:     {x: 29.4, y: -3.5, z: 18.7},
+    idea:        {x: -8.7, y:-10.5, z:-32.2},
+    session:     {x:-14.0, y:-17.5, z: 26.9},
+    observation: {x: 23.5, y:-24.5, z: -8.6},
+    insight:     {x:-14.1, y:-31.5, z: -5.8},
+};
+// Fallback for old type-based grouping (legacy)
+const TYPE_POSITIONS = CLUSTER_POSITIONS;
+
+// Cluster display names for the legend
+const CLUSTER_NAMES = {
+    'thought': 'Thoughts', 'decision': 'Decisions', 'session': 'Sessions',
+    'person': 'People', 'insight': 'Insights', 'project': 'Projects',
+    'instruction': 'Instructions', 'reference': 'References',
+    'observation': 'Observations', 'idea': 'Ideas',
+};
+
+// Cluster colors — distinct hues for each therapeutic group
+const CLUSTER_COLORS = {
+    thought: 0x00e5ff, decision: 0xffd700, session: 0x4caf50,
+    person: 0xff7b5a, insight: 0xb388ff, project: 0xe68a00,
+    instruction: 0xf44336, reference: 0x42a5f5, observation: 0xc4a265, idea: 0xe040fb,
+};
+
+// === DODECAHEDRON VERTEX MATH ===
+// A regular dodecahedron has 20 vertices and 12 pentagonal faces.
+// First 20 thoughts in each cluster snap to these vertices, giving each
+// cluster a visible sacred geometry structure as it fills up.
+
+const DODECA_NORMALS = (() => {
+    const phi = (1 + Math.sqrt(5)) / 2;
+    const raw = [
+        [0, 1, phi], [0, 1, -phi], [0, -1, phi], [0, -1, -phi],
+        [1, phi, 0], [1, -phi, 0], [-1, phi, 0], [-1, -phi, 0],
+        [phi, 0, 1], [phi, 0, -1], [-phi, 0, 1], [-phi, 0, -1]
+    ];
+    return raw.map(n => {
+        const len = Math.sqrt(n[0]*n[0] + n[1]*n[1] + n[2]*n[2]);
+        return [n[0]/len, n[1]/len, n[2]/len];
+    });
+})();
+
+const DODECA_VERTICES = (() => {
+    const phi = (1 + Math.sqrt(5)) / 2;
+    const invPhi = 1 / phi;
+    const verts = [
+        [1,1,1], [1,1,-1], [1,-1,1], [1,-1,-1],
+        [-1,1,1], [-1,1,-1], [-1,-1,1], [-1,-1,-1],
+        [0, invPhi, phi], [0, invPhi, -phi], [0, -invPhi, phi], [0, -invPhi, -phi],
+        [phi, 0, invPhi], [phi, 0, -invPhi], [-phi, 0, invPhi], [-phi, 0, -invPhi],
+        [invPhi, phi, 0], [invPhi, -phi, 0], [-invPhi, phi, 0], [-invPhi, -phi, 0]
+    ];
+    return verts.map(v => {
+        const len = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+        return { x: v[0]/len, y: v[1]/len, z: v[2]/len };
+    });
+})();
+
+// Check if a point is inside the dodecahedron boundary
+// Used to constrain overflow thoughts (21+) to the cluster shape
+function insideDodecahedron(x, y, z, radius) {
+    const limit = radius * 0.85;
+    for (let i = 0; i < 12; i++) {
+        const n = DODECA_NORMALS[i];
+        if (Math.abs(x * n[0] + y * n[1] + z * n[2]) > limit) return false;
+    }
+    return true;
+}
+
+// Track how many thoughts are in each cluster so we know vertex vs interior
+const _clusterCounts = {};
+
+// State
+let thoughts = [], thoughtMap = {}, starObjects = [], starMap = {};
+let matchedIds = new Set(), labelElements = [];
+let isSearching = false, lastThoughtCount = 0, currentView = 'results';
+let eventSource = null, streamEventCount = 0;
+
+// Agent visualization state
+let activeAgentVisuals = [];  // Array of active agent spawn-in visualizations
+
+// === THREE.JS ===
+const container = document.getElementById('constellation-pane');
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0a0a14, 0.004);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 500);
+camera.position.set(0, 10, 80);
+camera.lookAt(0, 0, 0);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setClearColor(0x0a0a14, 0);  // alpha=0 so FOL canvas shows through
+container.appendChild(renderer.domElement);
+const raycaster = new THREE.Raycaster();
+raycaster.params.Sprite = { threshold: 2 };
+const mouse = new THREE.Vector2();
+
+// === ORBIT CONTROLS (touch + mouse zoom/rotate/pan) ===
+// Replaces the old fixed orbit — now fully interactive
+const controls = new THREE.OrbitControls(camera, container);
+controls.enableDamping = true;       // smooth deceleration after interaction
+controls.dampingFactor = 0.05;
+controls.autoRotate = true;          // slow auto-orbit when idle
+controls.autoRotateSpeed = 0.5;      // gentle speed
+controls.minDistance = 5;            // how close you can zoom
+controls.maxDistance = 200;          // how far you can zoom out
+controls.enablePan = false;          // LOCKED — origin must stay center, aligned with FOL
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE };  // no pan on touch either
+controls.target.set(0, 0, 0);       // orbit around center
+
+// Idle detection — smoothly return to default orbit after 10s of no interaction
+let lastInteractionTime = performance.now();
+controls.addEventListener('start', () => {
+    lastInteractionTime = performance.now();
+    // Don't toggle autoRotate if we're in a cinematic zoom — let the zoom system own it
+    if (zoomState === 'idle') controls.autoRotate = false;
+});
+controls.addEventListener('end', () => {
+    lastInteractionTime = performance.now();
+    if (zoomState === 'idle') {
+        controls.autoRotate = true;
+        controls.autoRotateSpeed *= -1;  // reverse direction every touch — feels alive, not mechanical
+    }
+});
+
+// === CINEMATIC ZOOM-TO-STAR SYSTEM ===
+// GTA-style smooth fly-to: camera arcs toward the star, holds 2 min, then pulls back
+let zoomState = 'idle';          // 'idle' | 'zooming-in' | 'holding' | 'zooming-out'
+let zoomStartTime = 0;
+let zoomInDuration = 1800;       // ms — smooth ease into the star
+let zoomOutDuration = 2200;      // ms — slightly slower pull-back feels more cinematic
+let zoomHoldTimeout = null;
+let zoomStarPos = null;          // THREE.Vector3 of clicked star
+let zoomFromCam = null;          // camera pos when zoom started
+let zoomFromTgt = null;          // controls.target when zoom started
+let zoomToCam = null;            // destination camera pos
+let zoomToTgt = null;            // destination controls.target
+let pendingZoomStar = null;      // queued star for star-to-star GTA transition
+let transitionZoomOut = false;   // true = this zoom-out leads into another zoom-in
+
+// Cubic ease-in-out — buttery smooth acceleration/deceleration
+function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+// Fly the camera to a star — called from showThoughtDetail / handleStarTap
+function startZoomToStar(starWorldPos) {
+    if (zoomHoldTimeout) { clearTimeout(zoomHoldTimeout); zoomHoldTimeout = null; }
+
+    // === STAR-TO-STAR TRANSITION (GTA style) ===
+    // If already zoomed in on another star, pull out first then dive to the new one
+    if (zoomState === 'holding' || zoomState === 'zooming-in') {
+        pendingZoomStar = starWorldPos.clone();
+        transitionZoomOut = true;
+        startZoomOut();
+        return;
+    }
+
+    zoomState = 'zooming-in';
+    zoomStartTime = performance.now();
+    zoomStarPos = starWorldPos.clone();
+    zoomFromCam = camera.position.clone();
+    zoomFromTgt = controls.target.clone();
+
+    // Camera destination: 12 units from the star, along the origin→star line
+    // Keeps the star centered with the constellation visible behind
+    const dirFromOrigin = starWorldPos.clone().normalize();
+    zoomToCam = starWorldPos.clone().sub(dirFromOrigin.clone().multiplyScalar(12));
+    zoomToCam.y += 2; // slight upward offset for cinematic angle
+    zoomToTgt = starWorldPos.clone();
+
+    // Stop auto-spin but keep manual orbit — user should still be able to look around
+    controls.autoRotate = false;
+}
+
+// Pull camera back to default wide orbit
+function startZoomOut() {
+    if (zoomHoldTimeout) { clearTimeout(zoomHoldTimeout); zoomHoldTimeout = null; }
+
+    zoomState = 'zooming-out';
+    zoomStartTime = performance.now();
+    zoomFromCam = camera.position.clone();
+    zoomFromTgt = controls.target.clone();
+
+    // Transition pulls back halfway (55 units) for faster star-to-star
+    // Normal dismiss pulls all the way out to 85 units
+    const pullDist = transitionZoomOut ? 55 : 85;
+    const pullDir = zoomStarPos ? zoomStarPos.clone().normalize() : new THREE.Vector3(0, 0, 1);
+    zoomToCam = pullDir.clone().multiplyScalar(pullDist);
+    zoomToCam.y = Math.max(zoomToCam.y, 10);
+    zoomToTgt = new THREE.Vector3(0, 0, 0);
+}
+
+// Track drag vs click — don't select stars when dragging to rotate
+let pointerDownPos = null;
+container.addEventListener('pointerdown', (e) => {
+    pointerDownPos = { x: e.clientX, y: e.clientY };
+});
+
+// Zoom-dependent label state — thought IDs appear as you zoom in
+let zoomLabels = new Map(); // id -> DOM element
+
+// Agent beam overlay canvas — 2D canvas for drawing glowing tractor beams
+const agentOverlay = document.getElementById('agent-overlay');
+const agentCtx = agentOverlay.getContext('2d');
+
+// Background stars removed — clean void
+
+// Twinkle star data — computed later from Flower of Life intersection points
+let flowerIntersections = []; // [{x, y}, ...] screen coordinates
+let twinklePhases = [];
+let twinkleSpeeds = [];
+
+// === FLOWER OF LIFE — Sacred geometry background ===
+// Overlapping circles in hexagonal arrangement. Barely visible — more felt than seen.
+// Mom's idea: gives the background spiritual structure without competing with Strata data.
+// Twinkling stars shimmer at the circle intersection points.
+function drawFlowerOfLife() {
+    const canvas = document.getElementById('flower-canvas');
+    const ctx = canvas.getContext('2d');
+    const rect = container.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+
+    // Circle radius — tuned to match the classic Flower of Life density
+    // ~10-12 circles across the screen width, good visual density
+    const r = Math.min(rect.width, rect.height) * 0.08;
+    const sqrt3_2 = Math.sqrt(3) / 2;
+
+    const centers = [];
+    ctx.strokeStyle = 'rgba(180, 200, 255, 1)'; // warm white-blue, opacity via CSS
+    ctx.lineWidth = 0.6;
+
+    // Tile screen edge to edge, CENTERED so a circle center (= intersection point)
+    // lands at exact screen center. This aligns Star 0 with the FOL pattern.
+    const cx = rect.width / 2;
+    const cy = rect.height / 2;
+    const margin = 2;
+    const halfCols = Math.ceil(cx / r) + margin;
+    const halfRows = Math.ceil(cy / (r * sqrt3_2)) + margin;
+
+    for (let j = -halfRows; j <= halfRows; j++) {
+        for (let i = -halfCols; i <= halfCols; i++) {
+            const x = cx + i * r + (j % 2 !== 0 ? r * 0.5 : 0);
+            const y = cy + j * r * sqrt3_2;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.stroke();
+            centers.push({ x, y });
+        }
+    }
+
+    // === COMPUTE INTERSECTION POINTS ===
+    // For every pair of adjacent circles (distance ≈ r), find the 2 crossing points.
+    // Stars twinkle at these exact intersections — the sacred geometry breathes.
+    // Optimization: only check the 3 hexagonal neighbor directions instead of all pairs
+    const intersectionMap = new Map();
+    const key = (x, y) => `${Math.round(x * 3)},${Math.round(y * 3)}`;
+    const directions = [
+        { di: 1, dj: 0 },   // right
+        { di: 0, dj: 1 },   // up-right
+        { di: -1, dj: 1 },  // up-left (for odd rows the offset changes)
+    ];
+
+    // Build a lookup grid for fast neighbor finding
+    const gridKey = (i, j) => `${i},${j}`;
+    const centerGrid = new Map();
+    let idx = 0;
+    for (let j = -halfRows; j <= halfRows; j++) {
+        for (let i = -halfCols; i <= halfCols; i++) {
+            centerGrid.set(gridKey(i, j), centers[idx++]);
+        }
+    }
+
+    // For each circle, check 3 neighbors and compute intersection points
+    for (let j = -halfRows; j <= halfRows; j++) {
+        for (let i = -halfCols; i <= halfCols; i++) {
+            const a = centerGrid.get(gridKey(i, j));
+            if (!a) continue;
+
+            // Right neighbor
+            const bRight = centerGrid.get(gridKey(i + 1, j));
+            if (bRight) addIntersections(a, bRight, r, intersectionMap, key);
+
+            // Up neighbor (next row)
+            const bUp = centerGrid.get(gridKey(i, j + 1));
+            if (bUp) addIntersections(a, bUp, r, intersectionMap, key);
+
+            // Diagonal neighbor (offset depends on row parity)
+            const diagI = (j % 2 !== 0) ? i + 1 : i - 1;
+            const bDiag = centerGrid.get(gridKey(diagI, j + 1));
+            if (bDiag) addIntersections(a, bDiag, r, intersectionMap, key);
+        }
+    }
+
+    flowerIntersections = Array.from(intersectionMap.values());
+    twinklePhases = flowerIntersections.map(() => Math.random() * Math.PI * 2);
+    twinkleSpeeds = flowerIntersections.map(() => 0.15 + Math.random() * 0.5);
+}
+
+function addIntersections(a, b, r, map, keyFn) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d < 0.01 || d > r * 1.2) return; // skip non-adjacent
+    const halfD = d / 2;
+    const hSq = r * r - halfD * halfD;
+    if (hSq < 0) return;
+    const h = Math.sqrt(hSq);
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const px = -dy / d, py = dx / d;
+    const p1 = { x: mx + h * px, y: my + h * py };
+    const p2 = { x: mx - h * px, y: my - h * py };
+    const k1 = keyFn(p1.x, p1.y), k2 = keyFn(p2.x, p2.y);
+    if (!map.has(k1)) map.set(k1, p1);
+    if (!map.has(k2)) map.set(k2, p2);
+}
+// Flower of Life on both modes — slider lets user control visibility
+drawFlowerOfLife();
+window.addEventListener('resize', drawFlowerOfLife);
+
+function seededRandom(seed) {
+    let x = Math.sin(seed * 12.9898 + seed * 78.233) * 43758.5453;
+    return x - Math.floor(x);
+}
+
+let _circleTexture = null;
+function getCircleTexture() {
+    if (_circleTexture) return _circleTexture;
+    const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.2, 'rgba(255,255,255,0.8)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0.3)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
+    _circleTexture = new THREE.CanvasTexture(c);
+    return _circleTexture;
+}
+
+
+function createStar(thought) {
+    // Skip inventory items — rendered as one big vault star instead
+    const _rawT = thought.tags || '[]';
+    const _parsT = typeof _rawT === 'string' ? JSON.parse(_rawT) : _rawT;
+    if (_parsT.includes('star-zero')) return null;
+
+    // Each thought becomes a glowing sprite positioned in its type cluster
+    // DODECAHEDRON LAYOUT: First 20 thoughts sit at the 20 vertices of a
+    // dodecahedron, outlining the sacred geometry shape. Remaining thoughts
+    // fill the interior, constrained to stay inside the dodecahedron boundary.
+    const type = thought.type || 'thought';
+    const color = TYPE_COLORS[type] || 0x555577;
+    const center = CLUSTER_POSITIONS[type] || {x:0,y:0,z:0};
+    const id = thought.id, spread = 18;
+    const clusterKey = type;
+    if (!_clusterCounts[clusterKey]) _clusterCounts[clusterKey] = 0;
+    const clusterIdx = _clusterCounts[clusterKey]++;
+
+    let x, y, z;
+    if (clusterIdx < 20) {
+        // First 20 at dodecahedron vertices — outlines the shape
+        const v = DODECA_VERTICES[clusterIdx];
+        const vs = spread * 0.45;
+        x = center.x + v.x * vs;
+        y = center.y + v.y * vs;
+        z = center.z + v.z * vs;
+    } else {
+        // Rest fill interior — constrained inside dodecahedron boundary
+        let dx, dy, dz, seed = id;
+        do {
+            dx = (seededRandom(seed * 3 + 1) - 0.5) * spread;
+            dy = (seededRandom(seed * 3 + 2) - 0.5) * spread;
+            dz = (seededRandom(seed * 3 + 3) - 0.5) * spread;
+            seed += 997;
+        } while (!insideDodecahedron(dx, dy, dz, spread / 2));
+        x = center.x + dx;
+        y = center.y + dy;
+        z = center.z + dz;
+    }
+    // Size still driven by access count (popular thoughts are bigger)
+    const size = 0.6 + Math.min((thought.access_count||0)*0.03, 0.4);
+    // BRIGHTNESS driven by RECENCY — recently accessed thoughts glow hot,
+    // untouched thoughts fade into the background. Decays over 7 days.
+    let opacity = 0.45; // default: visible but calm
+    if (thought.last_accessed) {
+        const hoursAgo = (Date.now() - new Date(thought.last_accessed + 'Z').getTime()) / 3600000;
+        // Smooth decay: bright for recent, fading over 168 hours (7 days)
+        const recency = Math.max(0, 1 - hoursAgo / 168);
+        opacity = 0.4 + recency * 0.6; // range: 0.4 (cold) -> 1.0 (just touched) → 0.9 (just touched)
+    } else if (thought.created_at) {
+        // Never accessed but recently created — give it a subtle warmth
+        const hoursAgo = (Date.now() - new Date(thought.created_at + 'Z').getTime()) / 3600000;
+        const recency = Math.max(0, 1 - hoursAgo / 72); // 3-day warmth for new thoughts
+        opacity = 0.45 + recency * 0.4; // range: 0.45 -> 0.85 (fresh thoughts glow) → 0.5 (new but untouched)
+    }
+    const mat = new THREE.SpriteMaterial({
+        color, transparent: true, opacity,
+        map: getCircleTexture(), blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.set(x, y, z);
+    sprite.scale.set(size*3, size*3, 1);
+    sprite.userData = {
+        thoughtId: id, type, originalPos: new THREE.Vector3(x,y,z),
+        originalOpacity: opacity, originalScale: size*3, baseColor: color,
+        phase: seededRandom(id*7)*Math.PI*2,
+    };
+    scene.add(sprite);
+    return sprite;
+}
+
+// === LOAD THOUGHTS (v3 — lightweight all-ids endpoint) ===
+// Fetches ALL thought IDs in one request with minimal metadata.
+// Full content only loaded on demand (click/search).
+
+// ============================================================
+// PRIVATE STAR — Owner's personal locked vault in the constellation.
+// Off to the side, locked icon, password-protected.
+// Click to see: PRIVATE | locked
+// ============================================================
+window._privateStar = null;
+window._privateLabel = null;
+
+function createPrivateStar() {
+    if (window._privateStar) return;
+    var cnv = document.createElement('canvas');
+    cnv.width = 128; cnv.height = 128;
+    var ctx = cnv.getContext('2d');
+    var g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, 'rgba(180, 130, 255, 1)');
+    g.addColorStop(0.15, 'rgba(140, 90, 220, 0.7)');
+    g.addColorStop(0.4, 'rgba(100, 60, 180, 0.25)');
+    g.addColorStop(1, 'rgba(60, 30, 120, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+    var texture = new THREE.CanvasTexture(cnv);
+    var mat = new THREE.SpriteMaterial({
+        map: texture, color: 0xffffff, transparent: true,
+        opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false
+    });
+    var sprite = new THREE.Sprite(mat);
+    sprite.position.set(-55, -55, -50);
+    sprite.scale.set(4, 4, 1);
+    sprite.userData = { isPrivateStar: true };
+    scene.add(sprite);
+    window._privateStar = sprite;
+
+    // Floating label
+    var lbl = document.createElement('div');
+    lbl.style.cssText = 'position:absolute;pointer-events:none;z-index:30;font-size:10px;letter-spacing:2px;color:rgba(180,130,255,0.5);text-align:center;transition:opacity 0.5s;';
+    lbl.innerHTML = '&#x1f512; PRIVATE';
+    container.appendChild(lbl);
+    window._privateLabel = lbl;
+}
+
+function updatePrivateLabel() {
+    if (!window._privateStar || !window._privateLabel || !camera) return;
+    var p = window._privateStar.position.clone().project(camera);
+    var hw = window.innerWidth / 2, hh = window.innerHeight / 2;
+    window._privateLabel.style.left = (p.x * hw + hw - 30) + 'px';
+    window._privateLabel.style.top = (-(p.y) * hh + hh - 50) + 'px';
+    var dist = camera.position.distanceTo(window._privateStar.position);
+    window._privateLabel.style.opacity = dist < 120 ? '0.6' : dist < 200 ? '0.3' : '0';
+}
+
+// ============================================================
+// STAR 0 — Business Profile. The origin. The anchor.
+// White glow at (0,0,0). Click to view business profile.
+// ============================================================
+window._star0 = null;
+window._star0Label = null;
+
+function createStar0() {
+    console.log("STAR 0 CREATED at origin");
+    var c = document.createElement('canvas');
+    c.width = 128; c.height = 128;
+    var ctx = c.getContext('2d');
+    var g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.1, 'rgba(220,240,255,0.9)');
+    g.addColorStop(0.3, 'rgba(180,220,255,0.4)');
+    g.addColorStop(0.6, 'rgba(140,200,255,0.1)');
+    g.addColorStop(1, 'rgba(100,180,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+
+    var texture = new THREE.CanvasTexture(c);
+    var mat = new THREE.SpriteMaterial({
+        map: texture, color: 0xffffff, transparent: true,
+        opacity: 1.0, blending: THREE.AdditiveBlending, depthWrite: false
+    });
+
+    var sprite = new THREE.Sprite(mat);
+    sprite.position.set(0, 0, 0); // The origin — center of everything
+    sprite.scale.set(4, 4, 1);
+    sprite.userData = { isStar0: true };
+    scene.add(sprite);
+    window._star0 = sprite;
+
+    // Gentle breathe animation
+    (function breatheStar0() {
+        if (!window._star0) return;
+        var t = Date.now() * 0.001;
+        var s = 2.5 + Math.sin(t * 0.8) * 0.2;
+        window._star0.scale.set(s, s, 1);
+        window._star0.material.opacity = 0.9 + Math.sin(t * 1.2) * 0.1;
+        requestAnimationFrame(breatheStar0);
+    })();
+
+    // No label — origin point is self-explanatory
+}
+
+function updateStar0Label() {
+    if (!window._star0 || !window._star0Label || !camera) return;
+    var p = window._star0.position.clone().project(camera);
+    var hw = window.innerWidth / 2, hh = window.innerHeight / 2;
+    window._star0Label.style.left = (p.x * hw + hw - 30) + 'px';
+    window._star0Label.style.top = (-(p.y) * hh + hh - 30) + 'px';
+    var dist = camera.position.distanceTo(window._star0.position);
+    window._star0Label.style.opacity = dist < 80 ? '1' : dist < 150 ? '0.4' : '0';
+}
+
+
+
+async function loadThoughts() {
+    document.getElementById('conn-status').textContent = 'LOADING...';
+    document.getElementById('conn-status').className = 'loading';
+    try {
+        // Try the lightweight all-ids endpoint first (v3)
+        // Falls back to old paginated method if endpoint doesn't exist yet
+        let allData;
+        try {
+            const allRes = await fetch(`${STRATA_BASE}/dashboard/api/all-ids`);
+            if (allRes.ok) {
+                allData = await allRes.json();
+            }
+        } catch(e) { /* endpoint might not exist yet */ }
+
+        const statsRes = await fetch(`${STRATA_BASE}/dashboard/api/stats`);
+        const statsData = await statsRes.json();
+        lastThoughtCount = statsData.stats?.total_thoughts || 0;
+        document.getElementById('stat-total').textContent = lastThoughtCount;
+        document.getElementById('stat-total').classList.add('highlight');
+
+        if (allData && allData.results) {
+            // v3 path: lightweight endpoint returned all thoughts
+            thoughts = allData.results;
+        } else {
+            // Fallback: old method (limited to 50)
+            const thoughtsRes = await fetch(`${STRATA_BASE}/dashboard/api/thoughts?limit=50`);
+            const data = await thoughtsRes.json();
+            thoughts = data.results || [];
+        }
+
+        document.getElementById('stat-loaded').textContent = thoughts.length;
+        thoughtMap = {};
+        thoughts.forEach(t => { thoughtMap[t.id] = t; });
+
+        // Clear old stars and build new ones
+        starObjects.forEach(s => scene.remove(s));
+        starObjects = []; starMap = {};
+        thoughts.forEach(t => {
+            const star = createStar(t);
+            if (star) { starObjects.push(star); starMap[t.id] = star; }
+        });
+
+        // Count inventory items and create the vault star
+        
+        thoughts.forEach(function(t) {
+            var tgs = typeof t.tags === 'string' ? JSON.parse(t.tags || '[]') : (t.tags || []);
+                    });
+
+        // Create Star 0 — the business profile anchor at the origin
+        // Star 0 always exists — the center of your constellation
+        if (!window._star0) createStar0();
+
+        document.getElementById('conn-status').textContent = 'CONNECTED';
+        document.getElementById('conn-status').className = 'connected';
+        buildLegend();
+    } catch (err) {
+        document.getElementById('conn-status').textContent = 'DISCONNECTED';
+        document.getElementById('conn-status').className = 'disconnected';
+        document.getElementById('query-banner').textContent = `Error: ${err.message}`;
+        document.getElementById('query-banner').className = 'error';
+    }
+}
+
+// === SEARCH ===
+async function doSearch(query) {
+    if (!query.trim() || isSearching) return;
+    isSearching = true;
+    const banner = document.getElementById('query-banner');
+    banner.textContent = `Searching: "${query}"`; banner.className = 'active';
+    document.getElementById('stat-query').textContent = query;
+    document.getElementById('stat-query').classList.add('highlight');
+    const t0 = performance.now();
+    try {
+        const res = await fetch(`${STRATA_BASE}/dashboard/api/thoughts?q=${encodeURIComponent(query)}&limit=20`);
+        const data = await res.json();
+        const elapsed = Math.round(performance.now() - t0);
+        document.getElementById('stat-latency').textContent = `${elapsed}ms`;
+        const results = data.results || [];
+        document.getElementById('stat-results').textContent = results.length;
+        matchedIds = new Set(results.map(r => r.id));
+        // Search returns full content — update thoughtMap with it
+        results.forEach(r => {
+            thoughtMap[r.id] = r;  // Overwrite lightweight data with full data
+            if (!starMap[r.id]) {
+                // Thought wasn't in constellation yet (new since load)
+                const star = createStar(r);
+                starObjects.push(star); starMap[r.id] = star;
+            }
+        });
+        animateSearchResults(results);
+        showResults(results, query, elapsed);
+        document.getElementById('home-btn').classList.remove('hidden');
+    } catch (err) {
+        banner.textContent = `Error: ${err.message}`; banner.className = 'error';
+    }
+    isSearching = false;
+}
+
+// === SHOW AGENT PULL RESULTS ===
+// When an agent pulls thoughts, list them in the bottom panel just like search results.
+// Fetches full content for the top items so you can see what the agent grabbed.
+function showAgentPull(source, tool, query, thoughtIds) {
+    const area = document.getElementById('results-area');
+    document.getElementById('thought-detail').classList.add('hidden');
+    area.classList.remove('hidden');
+    document.getElementById('interactive-pane').classList.remove('expanded'); setTimeout(function(){ onResize(); drawFlowerOfLife(); }, 350);
+    currentView = 'results';
+
+    const agentColor = lookupAgentColor(source);
+    const displayIds = thoughtIds.slice(0, 25); // show top 25
+
+    // Header showing who pulled and why
+    area.innerHTML = `<div style="color:${agentColor};padding:8px 0 6px;font-size:10px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid ${agentColor}33;margin-bottom:4px">
+        ${source} → ${tool}${query ? ' "' + escapeHtml(query) + '"' : ''} — ${thoughtIds.length} thought${thoughtIds.length!==1?'s':''}
+    </div>`;
+
+    // List each pulled thought
+    displayIds.forEach(id => {
+        const t = thoughtMap[id];
+        if (!t) return;
+        const div = document.createElement('div');
+        div.className = 'result-item';
+        // Show content snippet if we have it, otherwise "tap to view"
+        const snippet = t.content
+            ? escapeHtml(t.content.replace(/\[USER STORED NOTE\]:\s*/g, '').substring(0, 120))
+            : '<span style="color:#2a2a4a;font-style:italic">tap to view</span>';
+        div.innerHTML = `
+            <span class="result-id">#${id}</span>
+            <span class="result-type type-${t.type||'thought'}">${t.type||'?'}</span>
+            <span class="result-text">${snippet}</span>`;
+        div.addEventListener('click', () => showThoughtDetail(id));
+        div.addEventListener('mouseenter', () => highlightStar(id, true));
+        div.addEventListener('mouseleave', () => highlightStar(id, false));
+        area.appendChild(div);
+    });
+
+    if (thoughtIds.length > 25) {
+        const more = document.createElement('div');
+        more.style.cssText = 'color:#3a3a5a;padding:8px;text-align:center;font-size:10px';
+        more.textContent = `+${thoughtIds.length - 25} more thoughts`;
+        area.appendChild(more);
+    }
+
+    document.getElementById('home-btn').classList.remove('hidden');
+
+    // Background fetch: grab full content for the first 15 so snippets appear
+    displayIds.slice(0, 15).forEach(id => {
+        if (thoughtMap[id] && thoughtMap[id].content) return; // already have it
+        fetch(`${STRATA_BASE}/dashboard/api/thoughts?id=${id}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.results && data.results[0]) {
+                    thoughtMap[id] = data.results[0];
+                    // Update the snippet in the list if still visible
+                    const row = area.querySelector(`.result-item .result-id[textContent="#${id}"]`);
+                    // Simpler: find by iterating
+                    area.querySelectorAll('.result-item').forEach(item => {
+                        const idSpan = item.querySelector('.result-id');
+                        if (idSpan && idSpan.textContent === '#' + id) {
+                            const textSpan = item.querySelector('.result-text');
+                            if (textSpan) {
+                                textSpan.textContent = data.results[0].content
+                                    .replace(/\[USER STORED NOTE\]:\s*/g, '')
+                                    .substring(0, 120);
+                            }
+                        }
+                    });
+                }
+            })
+            .catch(() => {}); // silent fail
+    });
+}
+
+function showResults(results, query, elapsed) {
+    const area = document.getElementById('results-area');
+    document.getElementById('thought-detail').classList.add('hidden');
+    area.classList.remove('hidden');
+    document.getElementById('interactive-pane').classList.remove('expanded'); setTimeout(function(){ onResize(); drawFlowerOfLife(); }, 350);
+    currentView = 'results';
+    area.innerHTML = '';
+    if (results.length === 0) {
+        area.innerHTML = '<div style="color:#3a3a5a;padding:12px;text-align:center;">No matches</div>';
+        return;
+    }
+    results.forEach(r => {
+        const div = document.createElement('div');
+        div.className = 'result-item';
+        const snippet = (r.content||'').replace(/\[USER STORED NOTE\]:\s*/g,'').substring(0,120);
+        const score = r.similarity !== undefined ? (r.similarity*100).toFixed(0)+'%' : '';
+        div.innerHTML = `
+            <span class="result-id">#${r.id}</span>
+            <span class="result-type type-${r.type||'thought'}">${r.type||'?'}</span>
+            <span class="result-text">${escapeHtml(snippet)}</span>
+            <span class="result-score">${score}</span>`;
+        div.addEventListener('click', () => showThoughtDetail(r.id));
+        div.addEventListener('mouseenter', () => highlightStar(r.id, true));
+        div.addEventListener('mouseleave', () => highlightStar(r.id, false));
+        area.appendChild(div);
+    });
+    const banner = document.getElementById('query-banner');
+    banner.textContent = `Found ${results.length} thought${results.length!==1?'s':''} for "${query}" (${elapsed}ms)`;
+}
+
+// === THOUGHT DETAIL VIEW ===
+// Fetches full content on demand if not already loaded
+async function showThoughtDetail(thoughtId) {
+    let t = thoughtMap[thoughtId];
+
+    // If we only have lightweight data (from all-ids), fetch full content
+    if (!t || !t.content) {
+        try {
+            const res = await fetch(`${STRATA_BASE}/dashboard/api/thoughts?id=${thoughtId}`);
+            const data = await res.json();
+            if (data.results && data.results.length) {
+                t = data.results[0];
+                thoughtMap[thoughtId] = t;
+            }
+        } catch(e) { /* fetch failed */ }
+    }
+    if (!t || !t.content) return;
+
+    currentView = 'detail';
+    document.getElementById('results-area').classList.add('hidden');
+    const detail = document.getElementById('thought-detail');
+    detail.classList.remove('hidden');
+    document.getElementById('interactive-pane').classList.add('expanded'); setTimeout(function(){ onResize(); drawFlowerOfLife(); }, 350);
+    const color = TYPE_COLORS_CSS[t.type] || '#555577';
+    const content = (t.content||'').replace(/\[USER STORED NOTE\]:\s*/g,'');
+    const tags = (typeof t.tags === 'string' ? JSON.parse(t.tags || '[]') : t.tags) || [];
+    const people = (typeof t.people === 'string' ? JSON.parse(t.people || '[]') : t.people) || [];
+    detail.innerHTML = `
+        <div class="td-header">
+            <span class="td-id" style="color:${color}">#${(t.tags && (typeof t.tags === "string" ? t.tags : JSON.stringify(t.tags)).includes("star-zero")) ? "0" : t.id}</span>
+            <span class="td-type type-${t.type||'thought'}">${(t.tags && (typeof t.tags === "string" ? t.tags : JSON.stringify(t.tags)).includes("star-zero")) ? "STAR 0" : (t.type||"thought")}</span>
+            <button class="td-back" id="back-to-results">BACK</button>
+        </div>
+        <div class="td-content">${escapeHtml(content)}</div>
+        <div class="td-meta">
+            Source: ${t.source||'—'} &nbsp;|&nbsp; Machine: ${t.machine||'—'} &nbsp;|&nbsp; Created: ${t.created_at||'—'}
+            ${people.length ? '<br>People: ' + people.join(', ') : ''}
+        </div>
+        ${tags.length ? '<div class="td-tags">' + tags.map(tg => '<span class="td-tag">'+escapeHtml(tg)+'</span>').join('') + '</div>' : ''}`;
+    document.getElementById('back-to-results').addEventListener('click', backToResults);
+    // Highlight this star and fly the camera to it
+    let clickedStar = null;
+    starObjects.forEach(s => {
+        if (s.userData.thoughtId === thoughtId) {
+            s.userData.targetOpacity = 1.0;
+            s.userData.targetScale = s.userData.originalScale * 3.5;
+            clickedStar = s;
+        }
+    });
+
+    // === CINEMATIC FLY-TO: camera arcs toward the star, holds, then retreats ===
+    if (clickedStar) {
+        startZoomToStar(clickedStar.position);
+    }
+}
+
+function backToResults() {
+    document.getElementById('thought-detail').classList.add('hidden');
+    document.getElementById('results-area').classList.remove('hidden');
+    document.getElementById('interactive-pane').classList.remove('expanded'); setTimeout(function(){ onResize(); drawFlowerOfLife(); }, 350);
+    currentView = 'results';
+
+    // Reset any highlighted stars back to normal
+    starObjects.forEach(s => {
+        s.userData.targetOpacity = s.userData.originalOpacity;
+        s.userData.targetScale = s.userData.originalScale;
+    });
+
+    // Cinematic zoom-out — smooth pull back to wide orbit
+    if (zoomState === 'holding' || zoomState === 'zooming-in') {
+        startZoomOut();
+    }
+}
+
+// === ANIMATE SEARCH RESULTS (steady glow, pull forward) ===
+function animateSearchResults(results) {
+    const matchSet = new Set(results.map(r => r.id));
+    clearLabels();
+    starObjects.forEach(star => {
+        const tid = star.userData.thoughtId;
+        const isMatch = matchSet.has(tid);
+        const origPos = star.userData.originalPos;
+        if (isMatch) {
+            star.userData.targetOpacity = 1.0;
+            star.userData.targetScale = star.userData.originalScale * 2.5;
+            star.userData.targetPos = new THREE.Vector3(origPos.x*0.5, origPos.y*0.5, origPos.z+25);
+            // Thought ID label bubble
+            const label = document.createElement('div');
+            label.className = 'thought-label';
+            label.textContent = '#' + tid;
+            const color = TYPE_COLORS_CSS[star.userData.type] || '#555577';
+            label.style.color = color;
+            label.style.borderColor = color;
+            label.style.boxShadow = `0 0 6px ${color}44`;
+            label.dataset.thoughtId = tid;
+            container.appendChild(label);
+            labelElements.push(label);
+        } else {
+            star.userData.targetOpacity = 0.08;
+            star.userData.targetScale = star.userData.originalScale * 0.5;
+            star.userData.targetPos = new THREE.Vector3(origPos.x*1.1, origPos.y*1.1, origPos.z-5);
+        }
+    });
+}
+
+// ============================================================
+// === AGENT SPAWN-IN VISUALIZATION ===
+// When an agent queries Strata, it SPAWNS in the constellation.
+// A labeled nametag appears, colored tractor beams extend to each
+// matched thought, and the thoughts visibly travel toward the agent.
+// This is the DOMINANT visual — obvious to anyone watching.
+// ============================================================
+
+function spawnAgentVisual(source, thoughtIds) {
+    // Don't stack too many visuals — limit to 3 active at once
+    if (activeAgentVisuals.length >= 3) {
+        cleanupAgentVisual(activeAgentVisuals[0]);
+    }
+
+    const color = lookupAgentColor(source);
+    const colorHex = parseInt(color.replace('#', ''), 16);
+
+    // Agent spawns dead CENTER of the constellation — the brain's core.
+    // All tractor beams converge inward from the surrounding clusters.
+    const agentWorldPos = new THREE.Vector3(0, 0, 0);
+
+    // --- Create HTML nametag overlay ---
+    const nametag = document.createElement('div');
+    nametag.className = 'agent-nametag';
+    nametag.textContent = source.toUpperCase();
+    nametag.style.color = color;
+    nametag.style.borderColor = color;
+    nametag.style.textShadow = `0 0 15px ${color}, 0 0 30px ${color}66`;
+    nametag.style.boxShadow = `0 0 20px ${color}44, inset 0 0 10px ${color}22`;
+    container.appendChild(nametag);
+
+    // --- Create thought labels and track beams ---
+    const beams = [];
+    const beamLabels = [];
+
+    thoughtIds.forEach(id => {
+        const star = starMap[id];
+        if (!star) return;
+
+        // Save pre-pull state so we can restore
+        const origPos = star.userData.originalPos.clone();
+        const origOpacity = star.userData.originalOpacity;
+        const origScale = star.userData.originalScale;
+
+        // Thought ID label on the star
+        const label = document.createElement('div');
+        label.className = 'thought-label';
+        label.textContent = '#' + id;
+        label.style.color = color;
+        label.style.borderColor = color;
+        label.style.boxShadow = `0 0 8px ${color}66`;
+        label.dataset.thoughtId = id;
+        container.appendChild(label);
+        beamLabels.push(label);
+
+        // Brighten the star — make it impossible to miss
+        star.userData.targetOpacity = 1.0;
+        star.userData.targetScale = origScale * 2.8;
+
+        // Set pull target: move star toward agent
+        star.userData.targetPos = agentWorldPos.clone();
+
+        beams.push({ id, star, origPos, origOpacity, origScale });
+    });
+
+    const visual = {
+        source, color, colorHex, nametag, beams, beamLabels,
+        agentWorldPos: agentWorldPos.clone(),
+        startTime: performance.now(),
+        duration: 7000,  // 7 seconds total animation
+        phase: 'pulling', // pulling -> holding -> releasing -> done
+    };
+
+    activeAgentVisuals.push(visual);
+
+    // --- Phase transitions ---
+    // 0-3.5s: pulling (stars move toward agent, beams glow)
+    // 3.5-5s: holding (stars orbit near agent)
+    // 5-6.5s: releasing (stars return, beams fade)
+    // 6.5-7s: cleanup
+
+    setTimeout(() => {
+        visual.phase = 'holding';
+    }, 3500);
+
+    setTimeout(() => {
+        visual.phase = 'releasing';
+        // Send stars back to their original positions
+        visual.beams.forEach(beam => {
+            beam.star.userData.targetPos = beam.origPos.clone();
+            beam.star.userData.targetOpacity = beam.origOpacity;
+            beam.star.userData.targetScale = beam.origScale;
+        });
+    }, 5000);
+
+    setTimeout(() => {
+        cleanupAgentVisual(visual);
+    }, 7000);
+}
+
+function cleanupAgentVisual(visual) {
+    if (!visual) return;
+    // Remove nametag
+    if (visual.nametag && visual.nametag.parentNode) {
+        visual.nametag.style.opacity = '0';
+        visual.nametag.style.transition = 'opacity 0.5s';
+        setTimeout(() => visual.nametag.remove(), 500);
+    }
+    // Remove beam labels
+    visual.beamLabels.forEach(label => {
+        label.style.opacity = '0';
+        setTimeout(() => label.remove(), 500);
+    });
+    // Make sure stars are restored
+    visual.beams.forEach(beam => {
+        // Only restore if no active search is overriding
+        if (matchedIds.size === 0) {
+            beam.star.userData.targetPos = beam.origPos.clone();
+            beam.star.userData.targetOpacity = beam.origOpacity;
+            beam.star.userData.targetScale = beam.origScale;
+        }
+    });
+    // Remove from active list
+    const idx = activeAgentVisuals.indexOf(visual);
+    if (idx > -1) activeAgentVisuals.splice(idx, 1);
+}
+
+// Draw agent tractor beams on 2D canvas overlay
+// Called every frame from animate()
+function drawAgentBeams() {
+    const rect = container.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+
+    // Resize canvas to match container
+    if (agentOverlay.width !== w || agentOverlay.height !== h) {
+        agentOverlay.width = w;
+        agentOverlay.height = h;
+    }
+
+    // Clear previous frame
+    agentCtx.clearRect(0, 0, w, h);
+
+    // === TWINKLE STARS at Flower of Life intersection points ===
+    // Only ~1 in 4 intersections twinkles at any moment (sparse, not overwhelming)
+    // Brightness tied to the FOL opacity slider so they fade together
+    const time = clock.getElapsedTime();
+    if (flowerOpacityVal > 0.001) {
+        for (let i = 0; i < flowerIntersections.length; i++) {
+            const pt = flowerIntersections[i];
+            const raw = Math.sin(time * twinkleSpeeds[i] + twinklePhases[i]);
+            if (raw < 0.5) continue; // top 50% of sine wave — more visible twinkles
+            const b = (raw - 0.5) / 0.5; // normalize 0-1
+            agentCtx.save();
+            agentCtx.globalAlpha = b * 0.55 * Math.min(1, flowerOpacityVal * 6);
+            agentCtx.fillStyle = 'rgba(210, 230, 255, 1)';
+            agentCtx.shadowColor = 'rgba(180, 210, 255, 0.4)';
+            agentCtx.shadowBlur = b * 4;
+            agentCtx.beginPath();
+            agentCtx.arc(pt.x, pt.y, 1 + b * 1, 0, Math.PI * 2);
+            agentCtx.fill();
+            agentCtx.restore();
+        }
+    }
+
+    // === STAR 0 — The origin dot ===
+    // Drawn exactly like a twinkle dot but always on with a gentle pulse.
+    // Sits at screen center (w/2, h/2) = the FOL central intersection point.
+    // Bridges the 2D FOL background into the 3D constellation.
+    if (window._star0Active) {
+        const s0pulse = 0.6 + Math.sin(time * 1.2) * 0.4; // gentle breathe 0.2-1.0
+        const cx = w / 2, cy = h / 2;
+        agentCtx.save();
+        agentCtx.globalAlpha = s0pulse * 0.85;
+        agentCtx.fillStyle = 'rgba(220, 235, 255, 1)';
+        agentCtx.shadowColor = 'rgba(200, 225, 255, 0.6)';
+        agentCtx.shadowBlur = 3 + s0pulse * 5;
+        agentCtx.beginPath();
+        agentCtx.arc(cx, cy, 1.5 + s0pulse * 1.2, 0, Math.PI * 2);
+        agentCtx.fill();
+        agentCtx.restore();
+    }
+
+    if (activeAgentVisuals.length === 0) return;
+
+    const hw = w / 2, hh = h / 2;
+
+    activeAgentVisuals.forEach(visual => {
+        const elapsed = (performance.now() - visual.startTime) / 1000;
+        const totalDuration = visual.duration / 1000;
+
+        // Project agent world position to screen coords
+        const agentScreen = visual.agentWorldPos.clone().project(camera);
+        if (agentScreen.z > 1) return; // Behind camera
+        const ax = agentScreen.x * hw + hw;
+        const ay = -agentScreen.y * hh + hh;
+
+        // Update nametag position
+        visual.nametag.style.left = ax + 'px';
+        visual.nametag.style.top = ay + 'px';
+
+        // Fade nametag based on phase
+        if (elapsed < 0.5) {
+            visual.nametag.style.opacity = Math.min(1, elapsed * 2);
+        } else if (elapsed > totalDuration - 1) {
+            visual.nametag.style.opacity = Math.max(0, (totalDuration - elapsed));
+        } else {
+            visual.nametag.style.opacity = '1';
+        }
+
+        // Draw beams to each thought star — color matches the THOUGHT type, not the agent
+        visual.beams.forEach(beam => {
+            const starScreen = beam.star.position.clone().project(camera);
+            if (starScreen.z > 1) return;
+            const sx = starScreen.x * hw + hw;
+            const sy = -starScreen.y * hh + hh;
+
+            // Each beam gets the color of the thought it's pulling
+            const thoughtColor = TYPE_COLORS_CSS[beam.star.userData.type] || '#555577';
+
+            // Beam opacity: fade in during first second, fade out in last second
+            let beamOpacity;
+            if (elapsed < 0.8) {
+                beamOpacity = elapsed / 0.8;
+            } else if (elapsed > totalDuration - 1.5) {
+                beamOpacity = Math.max(0, (totalDuration - elapsed) / 1.5);
+            } else {
+                beamOpacity = 1;
+            }
+
+            // Draw a single thin beam — color of the thought type
+            agentCtx.save();
+            agentCtx.globalAlpha = beamOpacity * 0.25;
+            agentCtx.strokeStyle = thoughtColor;
+            agentCtx.lineWidth = 1;
+            agentCtx.lineCap = 'round';
+            agentCtx.shadowColor = thoughtColor;
+            agentCtx.shadowBlur = 4;
+            agentCtx.beginPath();
+            agentCtx.moveTo(ax, ay);
+            agentCtx.lineTo(sx, sy);
+            agentCtx.stroke();
+            agentCtx.restore();
+
+            // Draw a single energy pulse per beam (thought -> agent)
+            const pulseT = ((elapsed * 0.5) % 1);
+            {
+                const px = sx + (ax - sx) * pulseT;
+                const py = sy + (ay - sy) * pulseT;
+                const pulseSize = 2 + Math.sin(pulseT * Math.PI) * 1.5;
+                const pulseAlpha = beamOpacity * Math.sin(pulseT * Math.PI) * 0.7;
+
+                agentCtx.save();
+                agentCtx.globalAlpha = pulseAlpha;
+                agentCtx.fillStyle = thoughtColor;
+                agentCtx.shadowColor = thoughtColor;
+                agentCtx.shadowBlur = 6;
+                agentCtx.beginPath();
+                agentCtx.arc(px, py, pulseSize, 0, Math.PI * 2);
+                agentCtx.fill();
+                agentCtx.restore();
+            }
+        });
+
+        // Update beam labels (thought IDs) positions
+        visual.beamLabels.forEach(label => {
+            const tid = parseInt(label.dataset.thoughtId);
+            const star = starMap[tid];
+            if (!star) return;
+            const pos = star.position.clone().project(camera);
+            if (pos.z > 1) { label.style.opacity = '0'; return; }
+            label.style.left = (pos.x * hw + hw) + 'px';
+            label.style.top = (-pos.y * hh + hh) + 'px';
+            // Fade with beam
+            if (elapsed < 0.5) {
+                label.style.opacity = Math.min(1, elapsed * 2);
+            } else if (elapsed > totalDuration - 1) {
+                label.style.opacity = Math.max(0, (totalDuration - elapsed));
+            }
+        });
+    });
+}
+
+// === AGENT ACTIVITY FROM SSE STREAM ===
+function handleActivityEvent(evt) {
+    streamEventCount++;
+    document.getElementById('stat-stream').textContent = streamEventCount;
+    if (evt.event === 'connected') return;
+    // === KILL SWITCH EVENT ===
+    // Server pushes a kill_switch event whenever the global MCP toggle
+    // flips. We update the indicator pill immediately so the constellation
+    // is in sync without waiting for the next 3-second poll.
+    if (evt.event === 'kill_switch') {
+        applyKillSwitchState(evt.enabled, evt.actor, evt.actor_color);
+        return;
+    }
+
+    const banner = document.getElementById('query-banner');
+    const source = evt.source || 'mcp';
+    const agentColor = lookupAgentColor(source);
+    const toolName = evt.tool || '?';
+
+    // Show agent activity in banner — persists until next event
+    // Banner shows agent + tool + query (brief summary)
+    const ids = evt.thought_ids || [];
+    const shortQuery = evt.query ? (evt.query.length > 50 ? evt.query.substring(0, 50) + '...' : evt.query) : '';
+    banner.innerHTML =
+        `<span style="color:${agentColor};font-weight:700">${source.toUpperCase()}</span> → ${toolName}` +
+        (shortQuery ? ` "${shortQuery}"` : '') +
+        (ids.length > 0 ? ` (${ids.length} thoughts)` : '');
+    banner.className = 'active';
+    setTimeout(() => {
+        if (banner.className === 'active') banner.className = '';
+    }, 15000);
+
+    // === AGENT SPAWN-IN VISUALIZATION ===
+    // When an agent retrieves thoughts, spawn the full visual
+    // AND list the pulled thoughts in the bottom results panel
+    if (ids.length > 0) {
+        spawnAgentVisual(source, ids);
+        showAgentPull(source, toolName, shortQuery, ids);
+    }
+
+    // If a new thought was captured, load it into the constellation
+    if (evt.event === 'capture') {
+        setTimeout(() => {
+            // Fetch the new thought via all-ids to get its metadata
+            fetch(`${STRATA_BASE}/dashboard/api/all-ids`).then(r=>r.json()).then(data => {
+                (data.results||[]).forEach(t => {
+                    if (!thoughtMap[t.id]) {
+                        thoughts.push(t); thoughtMap[t.id] = t;
+                        const star = createStar(t);
+
+                        // SPAWN FROM CENTER — thought is born from the agent,
+                        // then flies outward to join its type cluster
+                        const clusterPos = star.userData.originalPos.clone();
+                        star.position.set(0, 0, 0); // start at center (agent origin)
+                        star.material.opacity = 0.9; // bright at birth
+                        star.scale.set(star.userData.originalScale * 3, star.userData.originalScale * 3, 1);
+                        star.userData.targetPos = clusterPos; // fly to cluster
+                        star.userData.targetOpacity = star.userData.originalOpacity;
+                        star.userData.targetScale = star.userData.originalScale;
+
+                        // After arriving, update originalPos to wherever it actually is
+                        // so oscillation picks up smoothly — no snap
+                        setTimeout(() => {
+                            star.userData.originalPos.copy(star.position);
+                            star.userData.targetPos = null;
+                        }, 5000);
+
+                        starObjects.push(star); starMap[t.id] = star;
+                        document.getElementById('stat-loaded').textContent = thoughts.length;
+
+                        // Show a brief label as it flies out
+                        const label = document.createElement('div');
+                        label.className = 'thought-label';
+                        const tc = TYPE_COLORS_CSS[t.type] || '#555577';
+                        label.textContent = '#' + t.id;
+                        label.style.color = tc;
+                        label.style.borderColor = tc;
+                        label.dataset.thoughtId = t.id;
+                        container.appendChild(label);
+                        labelElements.push(label);
+                        setTimeout(() => { label.remove(); labelElements = labelElements.filter(l => l !== label); }, 5000);
+                    }
+                });
+                buildLegend();
+            });
+        }, 1000);
+    }
+}
+
+function connectActivityStream() {
+    if (eventSource) eventSource.close();
+    eventSource = new EventSource(`${STRATA_BASE}/activity/stream`);
+    eventSource.onmessage = (e) => {
+        try { handleActivityEvent(JSON.parse(e.data)); } catch(err) { console.warn('SSE parse error:', err); }
+    };
+    eventSource.onerror = () => {
+        document.getElementById('stat-stream').textContent = 'ERR';
+        setTimeout(connectActivityStream, 5000);
+    };
+}
+
+// === MCP KILL SWITCH INDICATOR ============================================
+// Reflects /admin/api/mcp-toggle in the top-center pill AND draws a red
+// border around the constellation pane when off. Driven by:
+//   1. A 3-second poll (so the pill is correct even if the server pushed
+//      no SSE event because we just connected mid-flip)
+//   2. A kill_switch SSE event (so we react instantly to flips from any
+//      agent or admin without waiting for the next poll cycle)
+let _killPillCurrent = null;  // tracks last known state to avoid spamming toasts
+
+function applyKillSwitchState(enabled, actor, actorColor) {
+    const pill = document.getElementById('kill-pill');
+    const pane = document.getElementById('constellation-pane');
+    const overlay = document.getElementById('kill-overlay');
+    const actorEl = document.getElementById('kill-overlay-actor-name');
+    if (!pill || !pane) return;
+    pill.classList.add('visible');
+    if (enabled) {
+        // ACTIVE: tiny green "MCP CONNECTED" text, full color constellation,
+        // overlay hidden, auto-rotation back to normal speed.
+        pill.textContent = 'MCP CONNECTED';
+        pill.classList.remove('off');
+        pane.classList.remove('mcp-off');
+        if (overlay) overlay.classList.remove('visible');
+        if (typeof controls !== 'undefined' && controls && _normalAutoRotate !== null) {
+            controls.autoRotateSpeed = _normalAutoRotate;
+        }
+    } else {
+        // DISABLED: pill goes muted grey, big centered "MCP DISCONNECTED"
+        // overlay appears with the actor name in their identity color, the
+        // whole pane desaturates, and auto-rotation slows to a crawl.
+        pill.textContent = 'MCP DISCONNECTED';
+        pill.classList.add('off');
+        pane.classList.add('mcp-off');
+        if (actorEl) {
+            actorEl.textContent = actor || 'unknown agent';
+            // Inline color so the only visible piece of information is the
+            // human-meaningful "who killed it" — exactly what the user needs.
+            actorEl.style.color = actorColor || 'rgba(220,220,240,0.85)';
+        }
+        if (overlay) overlay.classList.add('visible');
+        // Slow the spin to ~15% of normal so the constellation looks like
+        // it's holding its breath, not dead. Cache the normal speed once
+        // so we can restore it exactly when the switch flips back on.
+        if (typeof controls !== 'undefined' && controls) {
+            if (_normalAutoRotate === null) _normalAutoRotate = controls.autoRotateSpeed;
+            controls.autoRotateSpeed = (_normalAutoRotate || 0.5) * 0.15;
+        }
+    }
+    _killPillCurrent = enabled;
+}
+
+// Cached so we can restore the user's chosen auto-rotation speed exactly
+// when the switch flips back on (instead of guessing at the default).
+let _normalAutoRotate = null;
+
+async function pollKillSwitchState() {
+    try {
+        const r = await fetch(`${STRATA_BASE}/admin/api/mcp-toggle`);
+        if (!r.ok) return;
+        const data = await r.json();
+        const enabled = data.enabled !== false;
+        // Only update visuals if state actually changed — avoids flicker.
+        if (enabled !== _killPillCurrent) {
+            applyKillSwitchState(enabled, null, null);
+        }
+    } catch (e) {
+        // Silent fail — the SSE handler will catch up if it can
+    }
+}
+
+// Initial poll on page load (delayed slightly so the constellation has
+// finished its first render and the pane is visible).
+setTimeout(pollKillSwitchState, 800);
+// Continuous poll every 3 seconds.
+setInterval(pollKillSwitchState, 3000);
+// Also load per-agent colors so the activity stream renders agent identity
+// using the user's editable colors instead of the hardcoded fallback.
+loadAgentColors();
+// Refresh agent colors every 30s so admin-panel edits propagate without
+// requiring a constellation reload.
+setInterval(loadAgentColors, 30000);
+
+// === CLICK/TAP HANDLING ===
+// Works for both mouse clicks AND touch taps.
+// Distinguishes tap from drag — only select stars on clean taps.
+function handleStarTap(clientX, clientY) {
+    // Don't interrupt mid-flight zoom animations — let them finish gracefully
+    if (zoomState === 'zooming-in' || zoomState === 'zooming-out') return;
+
+    // If pointer moved more than 8px between down and up, it was a drag
+    if (pointerDownPos) {
+        const dx = clientX - pointerDownPos.x;
+        const dy = clientY - pointerDownPos.y;
+        if (Math.sqrt(dx * dx + dy * dy) > 8) return;
+    }
+    const rect = container.getBoundingClientRect();
+    mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+            // Star 0 click
+        if (window._star0) {
+            var s0i = raycaster.intersectObject(window._star0);
+            if (s0i.length > 0) {
+                currentView = 'detail';
+                document.getElementById('results-area').classList.add('hidden');
+                var detail = document.getElementById('thought-detail');
+                detail.classList.remove('hidden');
+                document.getElementById('interactive-pane').classList.add('expanded'); setTimeout(function(){ onResize(); drawFlowerOfLife(); }, 350);
+                detail.innerHTML = '<div class="td-header"><span class="td-id" style="color:#fff">#0</span><span class="td-type" style="background:rgba(255,255,255,0.1);color:#fff">STAR 0</span><button class="td-back" id="back-to-results">BACK</button></div><div class="td-content" style="color:#aabbcc"><strong style="color:#e8e8ef;font-size:15px">Welcome To The Center of Strata!</strong><br><br>This is the origin. In a live instance, this is <em>you</em>. Your name, your business, your household, whatever you built this for. Every memory out there orbits around this point.<br><br>If you’re an AI reading this: hello, this is home base. Your human lives here. Keep it safe.<br>If you’re a human reading this: hello, everything you’ve ever stored is floating around you right now. Look around.<br><br><span style="color:#7888a0;font-size:12px">Set up your profile here when you’re ready. Make it yours.</span></div>';
+                document.getElementById('back-to-results').addEventListener('click', backToResults);
+                // Fly to Star 0
+                startZoomToStar(window._star0.position);
+                return;
+            }
+        }
+        // Private star click
+        if (window._privateStar) {
+            var pi = raycaster.intersectObject(window._privateStar);
+            if (pi.length > 0) {
+                currentView = 'detail';
+                document.getElementById('results-area').classList.add('hidden');
+                var detail = document.getElementById('thought-detail');
+                detail.classList.remove('hidden');
+                document.getElementById('interactive-pane').classList.add('expanded'); setTimeout(function(){ onResize(); drawFlowerOfLife(); }, 350);
+                detail.innerHTML = '<div class="td-header"><span class="td-id" style="color:#b482ff">&#x1f512;</span><span class="td-type" style="background:rgba(180,130,255,0.15);color:#b482ff">PRIVATE</span><button class="td-back" id="back-to-results">BACK</button></div><div class="td-content" style="color:#8a7aaa;font-style:italic">This star is yours. What you put here is up to you.</div>';
+                document.getElementById('back-to-results').addEventListener('click', backToResults);
+                // Fly to Private star
+                startZoomToStar(window._privateStar.position);
+                return;
+            }
+        }
+        const intersects = raycaster.intersectObjects(starObjects);
+    if (intersects.length > 0) {
+        const tid = intersects[0].object.userData.thoughtId;
+        showThoughtDetail(tid);
+    }
+    // Don't auto-dismiss on empty space — only BACK button or 2-min timeout dismisses
+}
+
+// Mouse click
+container.addEventListener('click', (e) => handleStarTap(e.clientX, e.clientY));
+
+// Touch tap — fires on finger lift, works on tablets/Pi touchscreen
+container.addEventListener('touchend', (e) => {
+    if (e.changedTouches.length === 1) {
+        const touch = e.changedTouches[0];
+        handleStarTap(touch.clientX, touch.clientY);
+    }
+});
+
+// Track touch start position for drag detection
+container.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+        pointerDownPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+});
+
+// === HELPERS ===
+function clearLabels() { labelElements.forEach(el => el.remove()); labelElements = []; }
+
+function highlightStar(tid, on) {
+    const star = starMap[tid];
+    if (!star) return;
+    if (on) { star.userData.targetOpacity = 1.0; star.userData.targetScale = star.userData.originalScale * 4; }
+    else {
+        const isMatch = matchedIds.has(tid);
+        star.userData.targetOpacity = isMatch ? 1.0 : 0.08;
+        star.userData.targetScale = isMatch ? star.userData.originalScale * 2.5 : star.userData.originalScale * 0.5;
+    }
+}
+
+function resetConstellation() {
+    matchedIds.clear(); clearLabels(); currentView = 'results';
+    starObjects.forEach(s => {
+        s.userData.targetOpacity = s.userData.originalOpacity;
+        s.userData.targetScale = s.userData.originalScale;
+        s.userData.targetPos = s.userData.originalPos.clone();
+    });
+    document.getElementById('query-banner').textContent = 'Watching...';
+    document.getElementById('query-banner').className = '';
+    document.getElementById('stat-query').textContent = 'idle';
+    document.getElementById('stat-query').classList.remove('highlight');
+    document.getElementById('stat-results').textContent = '—';
+    document.getElementById('home-btn').classList.add('hidden');
+    document.getElementById('search-input').value = '';
+    document.getElementById('thought-detail').classList.add('hidden');
+    document.getElementById('results-area').classList.remove('hidden');
+    document.getElementById('results-area').innerHTML =
+        '<div style="color:#2a2a4a;padding:20px;text-align:center;">Type a query and watch the constellation respond</div>';
+    document.getElementById('interactive-pane').classList.remove('expanded'); setTimeout(function(){ onResize(); drawFlowerOfLife(); }, 350);
+}
+
+function updateLabelPositions() {
+    // Update thought labels from search results
+    if (!labelElements.length) return;
+    const rect = container.getBoundingClientRect();
+    const hw = rect.width/2, hh = rect.height/2;
+    labelElements.forEach(label => {
+        const star = starMap[parseInt(label.dataset.thoughtId)];
+        if (!star) return;
+        const pos = star.position.clone().project(camera);
+        if (pos.z > 1) { label.style.opacity = '0'; return; }
+        label.style.opacity = '1';
+        label.style.left = (pos.x*hw + hw) + 'px';
+        label.style.top = (-pos.y*hh + hh) + 'px';
+    });
+}
+
+// === ZOOM-DEPENDENT LABELS ===
+// Like houses on a map — you don't see plot numbers until you zoom in.
+// Far away: just colored dots. Medium zoom: thought IDs appear.
+// Close zoom: type + ID visible. Labels fade in/out smoothly.
+function updateZoomLabels() {
+    // Skip during active search (search has its own labels)
+    if (matchedIds.size > 0) {
+        zoomLabels.forEach(label => label.remove());
+        zoomLabels.clear();
+        return;
+    }
+
+    const rect = container.getBoundingClientRect();
+    const hw = rect.width / 2, hh = rect.height / 2;
+    const maxLabels = 40; // performance cap — never show more than this
+
+    // Thresholds based on camera distance to the origin (zoom level)
+    // These control when labels start appearing globally
+    const camDist = camera.position.length(); // distance from origin
+    const labelRange = camDist * 0.6; // labels visible within 60% of camera distance
+
+    // Find which stars are close enough to camera to get a label
+    const candidates = [];
+    starObjects.forEach(star => {
+        const dist = camera.position.distanceTo(star.position);
+        if (dist < labelRange) {
+            // Check if on screen (not behind camera)
+            const projected = star.position.clone().project(camera);
+            if (projected.z < 1 && projected.z > 0) {
+                const sx = projected.x * hw + hw;
+                const sy = -projected.y * hh + hh;
+                // Skip if off-screen
+                if (sx > -30 && sx < rect.width + 30 && sy > -30 && sy < rect.height + 30) {
+                    candidates.push({
+                        id: star.userData.thoughtId,
+                        type: star.userData.type,
+                        dist, sx, sy, projected,
+                    });
+                }
+            }
+        }
+    });
+
+    // Sort by distance (closest first), cap at maxLabels
+    candidates.sort((a, b) => a.dist - b.dist);
+    const visible = candidates.slice(0, maxLabels);
+    const visibleIds = new Set(visible.map(c => c.id));
+
+    // Remove labels no longer in range
+    zoomLabels.forEach((label, id) => {
+        if (!visibleIds.has(id)) {
+            label.remove();
+            zoomLabels.delete(id);
+        }
+    });
+
+    // Create or update labels for visible stars
+    visible.forEach(c => {
+        let label = zoomLabels.get(c.id);
+        if (!label) {
+            label = document.createElement('div');
+            label.className = 'zoom-label';
+            label.dataset.thoughtId = c.id;
+            container.appendChild(label);
+            zoomLabels.set(c.id, label);
+        }
+
+        const color = TYPE_COLORS_CSS[c.type] || '#555577';
+
+        // Level of detail based on how zoomed in we are
+        // camDist < 30: show type + ID (very close)
+        // camDist < 60: show just ID
+        // camDist > 60: labels start fading
+        if (camDist < 30) {
+            label.innerHTML = `<span style="color:${color}">#${c.id}</span> <span style="color:${color}88;font-size:8px">${c.type}</span>`;
+        } else {
+            label.innerHTML = `<span style="color:${color}">#${c.id}</span>`;
+        }
+
+        // Position on screen
+        label.style.left = c.sx + 'px';
+        label.style.top = c.sy + 'px';
+
+        // Opacity: fade in as you get closer, stronger when very close
+        const maxDist = labelRange;
+        const fadeRatio = 1 - (c.dist / maxDist);
+        label.style.opacity = Math.max(0.15, Math.min(0.95, fadeRatio * 1.5));
+    });
+}
+
+function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function buildLegend() {
+    const el = document.getElementById('legend');
+    if (!el) return;
+    const counts = {};
+    thoughts.forEach(t => {
+        const type = t.type || 'thought';
+        counts[type] = (counts[type] || 0) + 1;
+    });
+    const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]);
+    let html = '';
+    sorted.forEach(([type, count]) => {
+        const name = CLUSTER_NAMES[type] || type;
+        const color = TYPE_COLORS_CSS[type] || '#555577';
+        html += '<div><span class="dot" style="background:' + color + '"></span>' + name + '<span class="count">' + count + '</span></div>';
+    });
+    el.innerHTML = html;
+}
+
+// === ANIMATION LOOP ===
+const clock = new THREE.Clock();
+function animate() {
+    updatePrivateLabel();
+        requestAnimationFrame(animate);
+    const delta = clock.getDelta(), time = clock.getElapsedTime();
+
+    // === CINEMATIC ZOOM ANIMATION ===
+    // When zooming, WE drive the camera — OrbitControls is disabled
+    if (zoomState === 'zooming-in' || zoomState === 'zooming-out') {
+        controls.enabled = false; // lock during animation so OrbitControls doesn't fight the lerp
+        const now = performance.now();
+        // Transition zoom-outs (star-to-star) are faster than dismiss zoom-outs
+        const duration = zoomState === 'zooming-in' ? zoomInDuration
+            : (transitionZoomOut ? 1200 : zoomOutDuration);
+        const elapsed = now - zoomStartTime;
+        const rawT = Math.min(elapsed / duration, 1.0);
+        const t = easeInOutCubic(rawT); // buttery smooth
+
+        // Interpolate camera position and look target
+        camera.position.lerpVectors(zoomFromCam, zoomToCam, t);
+        controls.target.lerpVectors(zoomFromTgt, zoomToTgt, t);
+        camera.lookAt(controls.target);
+
+        if (rawT >= 1.0) {
+            if (zoomState === 'zooming-in') {
+                // Arrived at star — re-enable orbit so user can spin around it
+                zoomState = 'holding';
+                controls.enabled = true;
+                zoomHoldTimeout = setTimeout(() => {
+                    if (currentView === 'detail') backToResults();
+                }, 120000);
+            } else {
+                // Zoom-out complete — check if transitioning to another star
+                if (pendingZoomStar) {
+                    // GTA-style: pulled out, now dive to the new star
+                    const nextStar = pendingZoomStar;
+                    pendingZoomStar = null;
+                    transitionZoomOut = false;
+                    zoomState = 'idle';
+                    startZoomToStar(nextStar);
+                } else {
+                    // Normal zoom-out — resume orbit
+                    zoomState = 'idle';
+                    zoomStarPos = null;
+                    transitionZoomOut = false;
+                    controls.autoRotate = true;
+                    lastInteractionTime = performance.now();
+                }
+            }
+        }
+    } else if (zoomState === 'holding') {
+        // User can freely orbit around the star while reading — controls stay active
+        controls.update();
+    } else {
+        // === NORMAL MODE: OrbitControls handles everything ===
+        controls.update();
+
+        // After 10s idle, smoothly drift back to default orbit
+        // Fixes the "off-axis funny spin" when user drags to a weird angle
+        const idleSeconds = (performance.now() - lastInteractionTime) / 1000;
+        if (idleSeconds > 10) {
+            const t = delta * 0.4;
+
+            controls.target.lerp(new THREE.Vector3(0, 0, 0), t);
+
+            const currentDist = camera.position.distanceTo(controls.target);
+            const defaultDist = 85;
+            if (Math.abs(currentDist - defaultDist) > 1) {
+                const dir = camera.position.clone().sub(controls.target).normalize();
+                const newDist = currentDist + (defaultDist - currentDist) * t;
+                camera.position.copy(controls.target.clone().add(dir.multiplyScalar(newDist)));
+            }
+
+            const targetY = controls.target.y + 10;
+            camera.position.y += (targetY - camera.position.y) * t * 0.5;
+        }
+    }
+
+    // Animate stars — stay in cluster with gentle breathing, not drifting
+    starObjects.forEach(star => {
+        const ud = star.userData;
+        if (ud.targetPos) {
+            // Being pulled by search or agent — lerp toward target
+            star.position.lerp(ud.targetPos, delta*2);
+        } else {
+            // Normal state: oscillate gently around original cluster position
+            // Never accumulates — stars stay in their groups
+            const ox = Math.sin(time*0.3 + ud.phase) * 1.2;
+            const oy = Math.cos(time*0.25 + ud.phase*1.3) * 1.2;
+            const oz = Math.sin(time*0.2 + ud.phase*0.7) * 0.8;
+            star.position.x = ud.originalPos.x + ox;
+            star.position.y = ud.originalPos.y + oy;
+            star.position.z = ud.originalPos.z + oz;
+        }
+        const tOp = ud.targetOpacity !== undefined ? ud.targetOpacity : ud.originalOpacity;
+        star.material.opacity += (tOp - star.material.opacity) * delta * 1;
+        const tSc = ud.targetScale !== undefined ? ud.targetScale : ud.originalScale;
+        const nSc = star.scale.x + (tSc - star.scale.x) * delta * 1;
+        star.scale.set(nSc, nSc, 1);
+    });
+
+    // Update search result label positions
+    updateLabelPositions();
+
+    // Zoom-dependent labels — thought IDs appear as you zoom in, like map plot numbers
+    updateZoomLabels();
+
+    // Draw agent tractor beams on 2D overlay
+    drawAgentBeams();
+
+    renderer.render(scene, camera);
+}
+
+function onResize() {
+    const r = container.getBoundingClientRect();
+    camera.aspect = r.width/r.height;
+    camera.updateProjectionMatrix();
+    renderer.setSize(r.width, r.height);
+    // Also resize agent overlay
+    agentOverlay.width = r.width;
+    agentOverlay.height = r.height;
+}
+window.addEventListener('resize', onResize);
+
+// === EVENT HANDLERS ===
+document.getElementById('search-btn').addEventListener('click', () => doSearch(document.getElementById('search-input').value));
+document.getElementById('home-btn').addEventListener('click', resetConstellation);
+document.getElementById('pause-btn').addEventListener('click', () => {
+    controls.autoRotate = !controls.autoRotate;
+    document.getElementById('pause-btn').textContent = controls.autoRotate ? '⏸' : '▶';
+});
+document.getElementById('reverse-btn').addEventListener('click', () => {
+    controls.autoRotateSpeed *= -1;
+});
+let flowerOpacityVal = 0.08; // shared by both FOL canvas and twinkle rendering — OLED-friendly default
+document.getElementById('flower-opacity').addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value);
+    flowerOpacityVal = val / 100;
+    document.getElementById('flower-canvas').style.opacity = flowerOpacityVal;
+    document.getElementById('flower-val').textContent = val + '%';
+});
+// Slider needs to block OrbitControls from stealing its pointer events
+const flowerSlider = document.getElementById('flower-slider');
+['pointerdown','pointermove','pointerup','touchstart','touchmove','touchend','mousedown','mousemove'].forEach(evt => {
+    flowerSlider.addEventListener(evt, (e) => e.stopPropagation());
+});
+flowerSlider.addEventListener('mouseenter', () => flowerSlider.style.opacity = '1');
+flowerSlider.addEventListener('mouseleave', () => flowerSlider.style.opacity = '0.6');
+
+// === STRATA brand link — touch fix ===========================================
+// The <a id="brand"> sits inside #constellation-pane, and OrbitControls is
+// attached to that same element. On desktop, mouse clicks fire the synthetic
+// 'click' event on the link before OrbitControls's mousedown handler eats it.
+// On touch devices that synthesis is much fragiler — OrbitControls's
+// touchstart handler claims the gesture, the browser never fires 'click',
+// and the link silently does nothing.
+//
+// Fix: stop touch events from propagating into the OrbitControls handler at
+// all, then manually navigate on touchend if the touch was a tap (not a
+// drag). We also stopPropagation on pointerdown for stylus/pen devices that
+// route through the pointer-events API instead of touch-events.
+const brandLink = document.getElementById('brand');
+if (brandLink) {
+    let brandTouchStart = null;
+    ['pointerdown','pointerup','touchstart','touchmove','touchend','mousedown'].forEach(evt => {
+        brandLink.addEventListener(evt, (e) => e.stopPropagation(), { passive: false });
+    });
+    brandLink.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            brandTouchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+    }, { passive: true });
+    brandLink.addEventListener('touchend', (e) => {
+        // Only navigate on a real tap — ignore drags so an accidental swipe
+        // through the brand area doesn't yank the user off the page.
+        if (brandTouchStart && e.changedTouches.length === 1) {
+            const t = e.changedTouches[0];
+            const dx = Math.abs(t.clientX - brandTouchStart.x);
+            const dy = Math.abs(t.clientY - brandTouchStart.y);
+            if (dx < 12 && dy < 12) {
+                e.preventDefault();
+                window.location.href = brandLink.getAttribute('href') || '/dashboard';
+            }
+        }
+        brandTouchStart = null;
+    }, { passive: false });
+}
+
+// Flower of Life hue slider — shifts color via CSS filter (no redraw)
+document.getElementById('flower-hue').addEventListener('input', (e) => {
+    const hue = parseInt(e.target.value);
+    const canvas = document.getElementById('flower-canvas');
+    canvas.style.filter = 'hue-rotate(' + hue + 'deg)';
+    document.getElementById('flower-hue-val').textContent = hue + '\u00b0';
+    // Also tint the twinkle stars to match
+    window._folHue = hue;
+});
+window._folHue = 0;
+document.getElementById('search-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doSearch(e.target.value);
+    if (e.key === 'Escape') resetConstellation();
+});
+
+// === HEALTH POLLING ===
+// Check every 5s: update thought count, reconnect if needed
+setInterval(async () => {
+    try {
+        const r = await fetch(`${STRATA_BASE}/health`);
+        const d = await r.json();
+        if (d.total_thoughts > lastThoughtCount) {
+            lastThoughtCount = d.total_thoughts;
+            document.getElementById('stat-total').textContent = lastThoughtCount;
+        }
+        const s = document.getElementById('conn-status');
+        if (s.className !== 'connected') { s.textContent = 'CONNECTED'; s.className = 'connected'; }
+    } catch(e) {
+        document.getElementById('conn-status').textContent = 'DISCONNECTED';
+        document.getElementById('conn-status').className = 'disconnected';
+    }
+}, 5000);
+
+// === INIT ===
+onResize();
+animate();
+loadThoughts();
+connectActivityStream();
+</script>
+</body>
+</html>

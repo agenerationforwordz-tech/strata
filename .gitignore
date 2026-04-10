@@ -16,6 +16,8 @@ data/
 *.db-shm
 backups/
 logs/
+# Exception: the curated demo dataset that ships with the repo
+!demo/strata.db
 
 # IDE
 .vscode/
@@ -32,3 +34,7 @@ Thumbs.db
 
 # Private extensions (agent orchestration layer - not published)
 extensions.py
+
+# Backups and exports
+*.bak*
+*.csv

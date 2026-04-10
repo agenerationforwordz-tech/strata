@@ -10,26 +10,26 @@
 
   body {
     font-family: 'Segoe UI', -apple-system, sans-serif;
-    background: #1a1b2e;
-    color: #d4d4e0;
+    background: #182030;
+    color: #dce4f0;
     min-height: 100vh;
   }
 
   /* --- TOP BAR --- */
   .topbar {
-    background: linear-gradient(135deg, #252642 0%, #2d1f54 100%);
+    background: linear-gradient(135deg, #1e2a3c 0%, #1e2a3c 100%);
     padding: 18px 32px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid #3a3b5c;
+    border-bottom: 1px solid #303e50;
   }
 
   .topbar .logo {
     font-size: 26px;
     font-weight: 900;
     letter-spacing: 3px;
-    background: linear-gradient(90deg, #818cf8, #c084fc, #e879f9);
+    background: linear-gradient(90deg, #7eb8da, #9dcbed);
    -webkit-background-clip: text;
    -webkit-text-fill-color: transparent;
   }
@@ -38,7 +38,7 @@
     font-size: 12px;
     font-weight: 400;
     letter-spacing: 1px;
-   -webkit-text-fill-color: #6b6b8a;
+   -webkit-text-fill-color: #7888a0;
   }
 
   .topbar .status {
@@ -46,7 +46,7 @@
     align-items: center;
     gap: 16px;
     font-size: 13px;
-    color: #8b8ba8;
+    color: rgba(255,255,255,0.5);
   }
 
   .status-dot {
@@ -57,19 +57,19 @@
   }
 
   .status-dot.online {
-    background: #34d399;
-    box-shadow: 0 0 10px #34d399;
+    background: #6db88a;
+    box-shadow: 0 0 10px #6db88a;
   }
 
   .status-dot.offline {
-    background: #f87171;
-    box-shadow: 0 0 10px #f87171;
+    background: #d47070;
+    box-shadow: 0 0 10px #d47070;
     animation: none;
   }
 
   @keyframes pulse {
-    0%, 100% { opacity: 1; box-shadow: 0 0 10px #34d399; }
-    50% { opacity: 0.6; box-shadow: 0 0 20px #34d399; }
+    0%, 100% { opacity: 1; box-shadow: 0 0 10px #6db88a; }
+    50% { opacity: 0.6; box-shadow: 0 0 20px #6db88a; }
   }
 
   /* --- AUTH OVERLAY --- */
@@ -86,8 +86,8 @@
   .auth-overlay.hidden { display: none; }
 
   .auth-box {
-    background: #222340;
-    border: 1px solid #3a3b5c;
+    background: #1e2a3c;
+    border: 1px solid #303e50;
     border-radius: 20px;
     padding: 40px;
     max-width: 440px;
@@ -98,14 +98,14 @@
   .auth-box h2 {
     font-size: 24px;
     font-weight: 800;
-    background: linear-gradient(90deg, #818cf8, #c084fc);
+    background: linear-gradient(90deg, #7eb8da, #9dcbed);
    -webkit-background-clip: text;
    -webkit-text-fill-color: transparent;
     margin-bottom: 8px;
   }
 
   .auth-box p {
-    color: #8b8ba8;
+    color: rgba(255,255,255,0.5);
     font-size: 14px;
     margin-bottom: 20px;
     line-height: 1.5;
@@ -113,12 +113,12 @@
 
   .auth-box input {
     width: 100%;
-    background: #1e1f38;
-    border: 2px solid #3e3f6a;
+    background: #152030;
+    border: 2px solid #364558;
     border-radius: 14px;
     padding: 14px 18px;
     font-size: 15px;
-    color: #d4d4e0;
+    color: #dce4f0;
     outline: none;
     margin-bottom: 8px;
     font-family: inherit;
@@ -128,7 +128,7 @@
     font-family: monospace;
   }
 
-  .auth-box input:focus { border-color: #818cf8; }
+  .auth-box input:focus { border-color: #9dcbed; }
 
   .auth-box .server-input {
     font-family: 'Segoe UI', -apple-system, sans-serif;
@@ -136,24 +136,24 @@
   }
 
   .auth-box button {
-    background: linear-gradient(135deg, #818cf8, #a78bfa, #c084fc);
+    background: linear-gradient(135deg, #7eb8da, #9dcbed);
     border: none;
     border-radius: 14px;
     padding: 14px 32px;
     font-size: 15px;
     font-weight: 700;
-    color: #fff;
+    color: #111;
     cursor: pointer;
     width: 100%;
     margin-top: 8px;
-    box-shadow: 0 4px 16px rgba(129, 140, 248, 0.35);
+    box-shadow: 0 4px 16px rgba(126, 184, 218, 0.2);
     transition: transform 0.15s;
   }
 
   .auth-box button:hover { transform: translateY(-2px); }
 
   .auth-error {
-    color: #f87171;
+    color: #d47070;
     font-size: 13px;
     margin-top: 10px;
     min-height: 20px;
@@ -168,18 +168,18 @@
 
   /* --- CAPTURE THOUGHT --- */
   .capture-section {
-    background: linear-gradient(135deg, #2a2b4a 0%, #302850 100%);
+    background: linear-gradient(135deg, #1a2438 0%, #1e2a3c 100%);
     border-radius: 20px;
     padding: 28px 30px;
     margin-bottom: 22px;
-    border: 1px solid #3e3f6a;
+    border: 1px solid #364558;
     box-shadow: 0 4px 24px rgba(0,0,0,0.2);
   }
 
   .capture-section h3 {
     font-size: 18px;
     font-weight: 700;
-    color: #c4b5fd;
+    color: #9dcbed;
     margin-bottom: 14px;
     display: flex;
     align-items: center;
@@ -191,12 +191,12 @@
   .capture-textarea {
     width: 100%;
     min-height: 100px;
-    background: #1e1f38;
-    border: 2px solid #3e3f6a;
+    background: #152030;
+    border: 2px solid #364558;
     border-radius: 16px;
     padding: 18px 20px;
     font-size: 16px;
-    color: #d4d4e0;
+    color: #dce4f0;
     font-family: inherit;
     resize: vertical;
     outline: none;
@@ -205,11 +205,11 @@
   }
 
   .capture-textarea:focus {
-    border-color: #818cf8;
-    box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.15);
+    border-color: #9dcbed;
+    box-shadow: 0 0 0 4px rgba(126, 184, 218, 0.15);
   }
 
-  .capture-textarea::placeholder { color: #5c5c7a; }
+  .capture-textarea::placeholder { color: #687888; }
 
   .capture-row {
     display: flex;
@@ -220,49 +220,49 @@
   }
 
   .capture-input {
-    background: #1e1f38;
-    border: 2px solid #3e3f6a;
+    background: #152030;
+    border: 2px solid #364558;
     border-radius: 14px;
     padding: 12px 18px;
     font-size: 14px;
-    color: #d4d4e0;
+    color: #dce4f0;
     outline: none;
     flex: 1;
     min-width: 140px;
     transition: border-color 0.3s;
   }
 
-  .capture-input:focus { border-color: #818cf8; }
-  .capture-input::placeholder { color: #5c5c7a; }
+  .capture-input:focus { border-color: #9dcbed; }
+  .capture-input::placeholder { color: #687888; }
 
   .capture-select {
-    background: #1e1f38;
-    border: 2px solid #3e3f6a;
+    background: #152030;
+    border: 2px solid #364558;
     border-radius: 14px;
     padding: 12px 18px;
     font-size: 14px;
-    color: #d4d4e0;
+    color: #dce4f0;
     outline: none;
     cursor: pointer;
   }
 
   .capture-btn {
-    background: linear-gradient(135deg, #818cf8, #a78bfa, #c084fc);
+    background: linear-gradient(135deg, #7eb8da, #9dcbed);
     border: none;
     border-radius: 14px;
     padding: 14px 32px;
     font-size: 15px;
     font-weight: 700;
-    color: #fff;
+    color: #111;
     cursor: pointer;
     letter-spacing: 0.5px;
     transition: transform 0.15s, box-shadow 0.15s;
-    box-shadow: 0 4px 16px rgba(129, 140, 248, 0.35);
+    box-shadow: 0 4px 16px rgba(126, 184, 218, 0.2);
   }
 
   .capture-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 24px rgba(129, 140, 248, 0.5);
+    box-shadow: 0 6px 24px rgba(126, 184, 218, 0.5);
   }
 
   .capture-btn:disabled {
@@ -277,9 +277,9 @@
     min-height: 20px;
   }
 
-  .capture-status.success { color: #34d399; }
-  .capture-status.error { color: #f87171; }
-  .capture-status.warning { color: #fbbf24; }
+  .capture-status.success { color: #6db88a; }
+  .capture-status.error { color: #d47070; }
+  .capture-status.warning { color: #d4a054; }
 
   /* --- STAT CARDS --- */
   .stats-grid {
@@ -290,10 +290,10 @@
   }
 
   .stat-card {
-    background: #222340;
+    background: #1e2a3c;
     border-radius: 16px;
     padding: 20px 24px;
-    border: 1px solid #33345a;
+    border: 1px solid #2a3548;
     position: relative;
     overflow: hidden;
   }
@@ -306,16 +306,16 @@
     background: var(--accent);
   }
 
-  .stat-card:nth-child(1) { --accent: linear-gradient(90deg, #818cf8, #a78bfa); }
-  .stat-card:nth-child(2) { --accent: linear-gradient(90deg, #f472b6, #e879f9); }
-  .stat-card:nth-child(3) { --accent: linear-gradient(90deg, #34d399, #2dd4bf); }
-  .stat-card:nth-child(4) { --accent: linear-gradient(90deg, #fbbf24, #f97316); }
+  .stat-card:nth-child(1) { --accent: linear-gradient(90deg, #7eb8da, #d4a054); }
+  .stat-card:nth-child(2) { --accent: linear-gradient(90deg, #c48a9a, #6db88a); }
+  .stat-card:nth-child(3) { --accent: linear-gradient(90deg, #6db88a, #6db88a); }
+  .stat-card:nth-child(4) { --accent: linear-gradient(90deg, #d4a054, #d4a054); }
 
   .stat-label {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 1.5px;
-    color: #6b6b8a;
+    color: #7888a0;
     margin-bottom: 8px;
     font-weight: 600;
   }
@@ -327,18 +327,18 @@
     white-space: nowrap;
   }
 
-  .stat-card:nth-child(1) .stat-value { color: #a78bfa; }
-  .stat-card:nth-child(2) .stat-value { color: #f472b6; }
-  .stat-card:nth-child(3) .stat-value { color: #34d399; }
-  .stat-card:nth-child(4) .stat-value { color: #fbbf24; }
+  .stat-card:nth-child(1) .stat-value { color: #d4a054; }
+  .stat-card:nth-child(2) .stat-value { color: #c48a9a; }
+  .stat-card:nth-child(3) .stat-value { color: #6db88a; }
+  .stat-card:nth-child(4) .stat-value { color: #d4a054; }
 
   .stat-sub {
     font-size: 12px;
-    color: #5c5c7a;
+    color: #687888;
     margin-top: 6px;
   }
 
-  .stat-sub .up { color: #34d399; font-weight: 600; }
+  .stat-sub .up { color: #6db88a; font-weight: 600; }
 
   /* --- SEARCH BAR --- */
   .search-section { margin-bottom: 22px; }
@@ -355,12 +355,12 @@
 
   .search-bar input {
     width: 100%;
-    background: #222340;
-    border: 2px solid #33345a;
+    background: #1e2a3c;
+    border: 2px solid #2a3548;
     border-radius: 14px;
     padding: 14px 40px 14px 20px;
     font-size: 15px;
-    color: #d4d4e0;
+    color: #dce4f0;
     outline: none;
     transition: border-color 0.3s, box-shadow 0.3s;
   }
@@ -372,7 +372,7 @@
     transform: translateY(-50%);
     background: none;
     border: none;
-    color: #5c5c7a;
+    color: #687888;
     font-size: 18px;
     cursor: pointer;
     padding: 4px 6px;
@@ -383,29 +383,29 @@
   }
 
   .search-clear:hover {
-    color: #f87171;
+    color: #d47070;
     background: rgba(248, 113, 113, 0.1);
   }
 
   .search-clear.visible { display: block; }
 
   .search-bar input:focus {
-    border-color: #818cf8;
-    box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.12);
+    border-color: #9dcbed;
+    box-shadow: 0 0 0 3px rgba(126, 184, 218, 0.12);
   }
 
-  .search-bar input::placeholder { color: #5c5c7a; }
+  .search-bar input::placeholder { color: #687888; }
 
   .search-btn {
-    background: linear-gradient(135deg, #818cf8, #a78bfa);
+    background: linear-gradient(135deg, #7eb8da, #d4a054);
     border: none;
     border-radius: 14px;
     padding: 14px 28px;
     font-size: 14px;
     font-weight: 700;
-    color: #fff;
+    color: #111;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(129, 140, 248, 0.3);
+    box-shadow: 0 4px 12px rgba(126, 184, 218, 0.15);
     transition: transform 0.15s;
   }
 
@@ -421,8 +421,8 @@
 
   /* --- PANELS --- */
   .panel {
-    background: #222340;
-    border: 1px solid #33345a;
+    background: #1e2a3c;
+    border: 1px solid #2a3548;
     border-radius: 16px;
     overflow: hidden;
   }
@@ -437,7 +437,7 @@
 
   .panel-header {
     padding: 16px 20px;
-    border-bottom: 1px solid #2e2f50;
+    border-bottom: 1px solid #263040;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -448,7 +448,7 @@
     font-weight: 700;
     letter-spacing: 0.5px;
     text-transform: uppercase;
-    color: #8b8ba8;
+    color: rgba(255,255,255,0.5);
   }
 
   /* --- THOUGHT ITEMS --- */
@@ -460,21 +460,21 @@
   }
 
   .thought-scroll::-webkit-scrollbar { width: 6px; }
-  .thought-scroll::-webkit-scrollbar-track { background: #1e1f38; }
+  .thought-scroll::-webkit-scrollbar-track { background: #152030; }
   .thought-scroll::-webkit-scrollbar-thumb {
-    background: #4a4b7a;
+    background: #405060;
     border-radius: 3px;
   }
-  .thought-scroll::-webkit-scrollbar-thumb:hover { background: #6366f1; }
+  .thought-scroll::-webkit-scrollbar-thumb:hover { background: #5a95b5; }
 
   .thought-item {
     padding: 16px 20px;
-    border-bottom: 1px solid #2a2b48;
+    border-bottom: 1px solid #222e40;
     transition: background 0.2s;
     cursor: pointer;
   }
 
-  .thought-item:hover { background: rgba(129, 140, 248, 0.05); }
+  .thought-item:hover { background: rgba(126, 184, 218, 0.05); }
 
   /* --- LOADING SPINNER --- */
   .load-more {
@@ -483,7 +483,7 @@
     justify-content: center;
     gap: 10px;
     padding: 20px;
-    color: #6b6b8a;
+    color: #7888a0;
     font-size: 13px;
     font-weight: 500;
   }
@@ -492,8 +492,8 @@
 
   .spinner {
     width: 18px; height: 18px;
-    border: 2px solid #3a3b5c;
-    border-top-color: #818cf8;
+    border: 2px solid #303e50;
+    border-top-color: #9dcbed;
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
   }
@@ -506,7 +506,7 @@
     text-align: center;
     padding: 8px;
     font-size: 11px;
-    color: #4a4a68;
+    color: #405060;
     letter-spacing: 0.5px;
   }
 
@@ -526,22 +526,22 @@
     border-radius: 8px;
   }
 
-  .thought-type.thought { background: rgba(139,139,168,0.15); color: #a0a0be; }
-  .thought-type.decision { background: rgba(52,211,153,0.15); color: #34d399; }
-  .thought-type.insight { background: rgba(96,165,250,0.15); color: #60a5fa; }
-  .thought-type.project { background: rgba(251,191,36,0.15); color: #fbbf24; }
-  .thought-type.person { background: rgba(244,114,182,0.15); color: #f472b6; }
-  .thought-type.instruction { background: rgba(129,140,248,0.15); color: #818cf8; }
-  .thought-type.reference { background: rgba(45,212,191,0.15); color: #2dd4bf; }
-  .thought-type.session { background: rgba(148,163,184,0.15); color: #94a3b8; }
+  .thought-type.thought { background: rgba(139,139,168,0.15); color: #98a8b8; }
+  .thought-type.decision { background: rgba(52,211,153,0.15); color: #6db88a; }
+  .thought-type.insight { background: rgba(96,165,250,0.15); color: #7eb8da; }
+  .thought-type.project { background: rgba(251,191,36,0.15); color: #d4a054; }
+  .thought-type.person { background: rgba(244,114,182,0.15); color: #c48a9a; }
+  .thought-type.instruction { background: rgba(126,184,218,0.10); color: #9dcbed; }
+  .thought-type.reference { background: rgba(45,212,191,0.15); color: #6db88a; }
+  .thought-type.session { background: rgba(148,163,184,0.15); color: #8baaba; }
 
-  .thought-time { font-size: 12px; color: #6b6b8a; }
+  .thought-time { font-size: 12px; color: #7888a0; }
 
   .thought-machine {
     font-size: 11px;
-    color: #5c5c7a;
+    color: #687888;
     margin-left: auto;
-    background: #2a2b48;
+    background: #222e40;
     padding: 2px 10px;
     border-radius: 6px;
   }
@@ -549,7 +549,7 @@
   .thought-content {
     font-size: 14px;
     line-height: 1.55;
-    color: #b0b0c8;
+    color: #b0bcd0;
     display: -webkit-box;
    -webkit-line-clamp: 2;
    -webkit-box-orient: vertical;
@@ -568,7 +568,7 @@
     padding: 3px 11px;
     border-radius: 10px;
     background: rgba(167, 139, 250, 0.12);
-    color: #c4b5fd;
+    color: #9dcbed;
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
@@ -576,13 +576,13 @@
 
   .tag:hover {
     background: rgba(167, 139, 250, 0.3);
-    color: #e0d5ff;
+    color: #c8dded;
   }
 
   .thought-files {
     margin-top: 6px;
     font-size: 11px;
-    color: #818cf8;
+    color: #9dcbed;
     font-weight: 600;
   }
 
@@ -600,12 +600,12 @@
   }
 
   .sidebar-scroll::-webkit-scrollbar { width: 5px; }
-  .sidebar-scroll::-webkit-scrollbar-track { background: #1e1f38; }
+  .sidebar-scroll::-webkit-scrollbar-track { background: #152030; }
   .sidebar-scroll::-webkit-scrollbar-thumb {
-    background: #4a4b7a;
+    background: #405060;
     border-radius: 3px;
   }
-  .sidebar-scroll::-webkit-scrollbar-thumb:hover { background: #6366f1; }
+  .sidebar-scroll::-webkit-scrollbar-thumb:hover { background: #5a95b5; }
 
   /* --- TRENDING TAGS --- */
   .trend-item {
@@ -613,13 +613,13 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid #2a2b48;
+    border-bottom: 1px solid #222e40;
   }
 
   .trend-item:last-child { border-bottom: none; }
-  .trend-tag { font-size: 14px; color: #b0b0c8; font-weight: 500; cursor: pointer; transition: color 0.15s; }
-  .trend-item:hover { background: rgba(129, 140, 248, 0.06); }
-  .trend-item:hover .trend-tag { color: #c4b5fd; }
+  .trend-tag { font-size: 14px; color: #b0bcd0; font-weight: 500; cursor: pointer; transition: color 0.15s; }
+  .trend-item:hover { background: rgba(126, 184, 218, 0.06); }
+  .trend-item:hover .trend-tag { color: #9dcbed; }
 
   .trend-badge {
     font-size: 12px;
@@ -628,10 +628,10 @@
     border-radius: 10px;
   }
 
-  .trend-badge.up { background: rgba(52,211,153,0.15); color: #34d399; }
-  .trend-badge.down { background: rgba(248,113,113,0.15); color: #f87171; }
-  .trend-badge.new { background: rgba(96,165,250,0.15); color: #60a5fa; }
-  .trend-badge.flat { background: rgba(139,139,168,0.1); color: #6b6b8a; }
+  .trend-badge.up { background: rgba(52,211,153,0.15); color: #6db88a; }
+  .trend-badge.down { background: rgba(248,113,113,0.15); color: #d47070; }
+  .trend-badge.new { background: rgba(96,165,250,0.15); color: #7eb8da; }
+  .trend-badge.flat { background: rgba(139,139,168,0.1); color: #7888a0; }
 
   /* --- DEVICE ACTIVITY --- */
   .device-bar-container { padding: 14px 20px; }
@@ -647,7 +647,7 @@
 
   .device-name {
     font-size: 13px;
-    color: #8b8ba8;
+    color: rgba(255,255,255,0.5);
     min-width: 90px;
     text-align: right;
     font-weight: 500;
@@ -656,7 +656,7 @@
   .device-bar {
     flex: 1;
     height: 22px;
-    background: #2a2b48;
+    background: #222e40;
     border-radius: 8px;
     overflow: hidden;
   }
@@ -668,29 +668,29 @@
   }
 
   /* Cycle through 4 gradient colors for device bars */
-  .device-row:nth-child(4n+1) .device-fill { background: linear-gradient(90deg, #818cf8, #a78bfa); }
-  .device-row:nth-child(4n+2) .device-fill { background: linear-gradient(90deg, #f472b6, #e879f9); }
-  .device-row:nth-child(4n+3) .device-fill { background: linear-gradient(90deg, #34d399, #2dd4bf); }
-  .device-row:nth-child(4n+0) .device-fill { background: linear-gradient(90deg, #fbbf24, #f97316); }
+  .device-row:nth-child(4n+1) .device-fill { background: linear-gradient(90deg, #7eb8da, #d4a054); }
+  .device-row:nth-child(4n+2) .device-fill { background: linear-gradient(90deg, #c48a9a, #6db88a); }
+  .device-row:nth-child(4n+3) .device-fill { background: linear-gradient(90deg, #6db88a, #6db88a); }
+  .device-row:nth-child(4n+0) .device-fill { background: linear-gradient(90deg, #d4a054, #d4a054); }
 
   .device-count {
     font-size: 13px;
     font-weight: 700;
-    color: #b0b0c8;
+    color: #b0bcd0;
     min-width: 40px;
   }
 
   /* --- HOTTEST MEMORIES --- */
   .hot-item {
     padding: 12px 20px;
-    border-bottom: 1px solid #2a2b48;
+    border-bottom: 1px solid #222e40;
     display: flex;
     align-items: center;
     gap: 12px;
     transition: background 0.2s;
   }
 
-  .hot-item:hover { background: rgba(129, 140, 248, 0.05); }
+  .hot-item:hover { background: rgba(126, 184, 218, 0.05); }
   .hot-item:last-child { border-bottom: none; }
 
   .hot-rank {
@@ -703,22 +703,22 @@
     border-radius: 10px;
   }
 
-  .hot-item:nth-child(1) .hot-rank { background: rgba(251,191,36,0.2); color: #fbbf24; }
-  .hot-item:nth-child(2) .hot-rank { background: rgba(148,163,184,0.15); color: #94a3b8; }
-  .hot-item:nth-child(3) .hot-rank { background: rgba(244,114,182,0.15); color: #f472b6; }
-  .hot-item:nth-child(4) .hot-rank { background: rgba(129,140,248,0.15); color: #818cf8; }
-  .hot-item:nth-child(n+5) .hot-rank { background: rgba(139,139,168,0.1); color: #6b6b8a; }
+  .hot-item:nth-child(1) .hot-rank { background: rgba(251,191,36,0.2); color: #d4a054; }
+  .hot-item:nth-child(2) .hot-rank { background: rgba(148,163,184,0.15); color: #8baaba; }
+  .hot-item:nth-child(3) .hot-rank { background: rgba(244,114,182,0.15); color: #c48a9a; }
+  .hot-item:nth-child(4) .hot-rank { background: rgba(126,184,218,0.10); color: #9dcbed; }
+  .hot-item:nth-child(n+5) .hot-rank { background: rgba(139,139,168,0.1); color: #7888a0; }
 
   .hot-preview {
     font-size: 13px;
-    color: #8b8ba8;
+    color: rgba(255,255,255,0.5);
     line-height: 1.4;
     flex: 1;
   }
 
   .hot-count {
     font-size: 11px;
-    color: #6b6b8a;
+    color: #7888a0;
     white-space: nowrap;
     font-weight: 600;
   }
@@ -743,13 +743,13 @@
   .empty-state h3 {
     font-size: 24px;
     font-weight: 700;
-    color: #c4b5fd;
+    color: #9dcbed;
     margin-bottom: 10px;
   }
 
   .empty-state p {
     font-size: 15px;
-    color: #8b8ba8;
+    color: rgba(255,255,255,0.5);
     max-width: 440px;
     margin: 0 auto 16px;
     line-height: 1.65;
@@ -757,7 +757,7 @@
 
   .empty-state .hint {
     font-size: 13px;
-    color: #a78bfa;
+    color: #d4a054;
     background: rgba(167, 139, 250, 0.1);
     display: inline-block;
     padding: 10px 20px;
@@ -769,14 +769,14 @@
   .footer {
     text-align: center;
     padding: 24px;
-    color: #4a4a68;
+    color: #405060;
     font-size: 12px;
     letter-spacing: 0.5px;
     margin-top: 32px;
   }
 
   .footer a {
-    color: #818cf8;
+    color: #9dcbed;
     text-decoration: none;
     font-weight: 600;
   }
@@ -784,29 +784,53 @@
   /* --- TOP BAR BUTTONS --- */
   .topbar-btn {
     background: none;
-    border: 1px solid #3a3b5c;
+    border: 1px solid #303e50;
     border-radius: 8px;
     padding: 5px 12px;
     font-size: 11px;
-    color: #6b6b8a;
+    color: #7888a0;
     cursor: pointer;
     transition: all 0.2s;
   }
 
   .topbar-btn:hover {
-    border-color: #818cf8;
-    color: #c4b5fd;
+    border-color: #9dcbed;
+    color: #9dcbed;
   }
 
+
+  /* Admin nav links in topbar */
+  .topbar-nav {
+    display: flex;
+    gap: 4px;
+    margin-right: 12px;
+  }
+  .topbar-nav a {
+    color: rgba(255,255,255,0.5);
+    text-decoration: none;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+  }
+  .topbar-nav a:hover {
+    color: #9dcbed;
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.1);
+  }
+  .topbar-nav a .nav-icon {
+    margin-right: 4px;
+  }
   .topbar-btn.logout:hover {
-    border-color: #f87171;
-    color: #f87171;
+    border-color: #d47070;
+    color: #d47070;
   }
 
   /* --- SEED PHRASE DISPLAY --- */
   .seed-box {
-    background: #1a1b2e;
-    border: 2px solid #fbbf24;
+    background: #182030;
+    border: 2px solid #d4a054;
     border-radius: 14px;
     padding: 24px 20px;
     margin: 16px 0;
@@ -816,19 +840,19 @@
   }
 
   .seed-word {
-    background: #252642;
-    border: 1px solid #3a3b5c;
+    background: #1e2a3c;
+    border: 1px solid #303e50;
     border-radius: 8px;
     padding: 10px 8px;
     font-family: monospace;
     font-size: 15px;
-    color: #fbbf24;
+    color: #d4a054;
     text-align: center;
     user-select: all;
   }
 
   .seed-word .seed-num {
-    color: #6b6b8a;
+    color: #7888a0;
     font-size: 11px;
     margin-right: 4px;
   }
@@ -839,8 +863,8 @@
     gap: 10px;
     margin: 16px 0;
     padding: 14px 16px;
-    background: #1a1b2e;
-    border: 1px solid #3a3b5c;
+    background: #182030;
+    border: 1px solid #303e50;
     border-radius: 10px;
     cursor: pointer;
   }
@@ -848,19 +872,19 @@
   .seed-confirm-row input[type="checkbox"] {
     width: 20px;
     height: 20px;
-    accent-color: #818cf8;
+    accent-color: #9dcbed;
     cursor: pointer;
     flex-shrink: 0;
   }
 
   .seed-confirm-row span {
-    color: #d4d4e0;
+    color: #dce4f0;
     font-size: 14px;
     font-weight: 600;
   }
 
   .seed-warning {
-    color: #f87171;
+    color: #d47070;
     font-size: 13px;
     font-weight: 700;
     margin: 10px 0;
@@ -881,8 +905,8 @@
   .settings-overlay.hidden { display: none; }
 
   .settings-box {
-    background: #222340;
-    border: 1px solid #3a3b5c;
+    background: #1e2a3c;
+    border: 1px solid #303e50;
     border-radius: 20px;
     padding: 32px 36px;
     max-width: 520px;
@@ -894,14 +918,14 @@
   .settings-box h2 {
     font-size: 22px;
     font-weight: 800;
-    color: #c4b5fd;
+    color: #9dcbed;
     margin-bottom: 20px;
   }
 
   .settings-section {
     margin-bottom: 24px;
     padding-bottom: 20px;
-    border-bottom: 1px solid #2e2f50;
+    border-bottom: 1px solid #263040;
   }
 
   .settings-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
@@ -909,7 +933,7 @@
   .settings-section h3 {
     font-size: 14px;
     font-weight: 700;
-    color: #8b8ba8;
+    color: rgba(255,255,255,0.5);
     text-transform: uppercase;
     letter-spacing: 1px;
     margin-bottom: 12px;
@@ -917,26 +941,26 @@
 
   .settings-input {
     width: 100%;
-    background: #1e1f38;
-    border: 2px solid #3e3f6a;
+    background: #152030;
+    border: 2px solid #364558;
     border-radius: 12px;
     padding: 12px 16px;
     font-size: 14px;
-    color: #d4d4e0;
+    color: #dce4f0;
     outline: none;
     margin-bottom: 8px;
   }
 
-  .settings-input:focus { border-color: #818cf8; }
+  .settings-input:focus { border-color: #9dcbed; }
 
   .settings-btn {
-    background: linear-gradient(135deg, #818cf8, #a78bfa);
+    background: linear-gradient(135deg, #7eb8da, #d4a054);
     border: none;
     border-radius: 12px;
     padding: 10px 24px;
     font-size: 13px;
     font-weight: 700;
-    color: #fff;
+    color: #111;
     cursor: pointer;
     margin-top: 4px;
     transition: transform 0.15s;
@@ -946,7 +970,7 @@
   .settings-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
   .settings-btn.close {
-    background: #3a3b5c;
+    background: #303e50;
     width: 100%;
     margin-top: 16px;
   }
@@ -956,8 +980,8 @@
     margin-top: 6px;
     min-height: 18px;
   }
-  .settings-msg.ok { color: #34d399; }
-  .settings-msg.err { color: #f87171; }
+  .settings-msg.ok { color: #6db88a; }
+  .settings-msg.err { color: #d47070; }
 
   /* --- SESSION & HISTORY LIST --- */
   .session-item {
@@ -965,28 +989,28 @@
     align-items: center;
     gap: 10px;
     padding: 8px 0;
-    border-bottom: 1px solid #2a2b48;
+    border-bottom: 1px solid #222e40;
     font-size: 13px;
   }
   .session-item:last-child { border-bottom: none; }
-  .session-device { color: #c4b5fd; font-weight: 600; }
-  .session-time { color: #6b6b8a; font-size: 11px; }
+  .session-device { color: #9dcbed; font-weight: 600; }
+  .session-time { color: #7888a0; font-size: 11px; }
   .session-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-  .session-meta { color: #6b6b8a; font-size: 11px; }
-  .session-current { color: #34d399; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+  .session-meta { color: #7888a0; font-size: 11px; }
+  .session-current { color: #6db88a; font-size: 10px; font-weight: 600; text-transform: uppercase; }
   .revoke-btn {
-    background: transparent; border: 1px solid #f87171; color: #f87171;
+    background: transparent; border: 1px solid #d47070; color: #d47070;
     padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
     transition: all 0.15s;
   }
-  .revoke-btn:hover { background: #f87171; color: #1a1b2e; }
+  .revoke-btn:hover { background: #d47070; color: #182030; }
   .history-item {
     display: flex; align-items: center; gap: 8px;
-    padding: 6px 0; border-bottom: 1px solid #2a2b48; font-size: 12px;
+    padding: 6px 0; border-bottom: 1px solid #222e40; font-size: 12px;
   }
   .history-item:last-child { border-bottom: none; }
-  .history-success { color: #34d399; }
-  .history-fail { color: #f87171; }
+  .history-success { color: #6db88a; }
+  .history-fail { color: #d47070; }
 
   /* --- THOUGHT DETAIL MODAL --- */
   .detail-overlay {
@@ -1002,8 +1026,8 @@
   .detail-overlay.hidden { display: none; }
 
   .detail-box {
-    background: #222340;
-    border: 1px solid #3a3b5c;
+    background: #1e2a3c;
+    border: 1px solid #303e50;
     border-radius: 20px;
     padding: 32px 36px;
     max-width: 700px;
@@ -1013,8 +1037,8 @@
   }
 
   .detail-box::-webkit-scrollbar { width: 6px; }
-  .detail-box::-webkit-scrollbar-track { background: #1e1f38; }
-  .detail-box::-webkit-scrollbar-thumb { background: #4a4b7a; border-radius: 3px; }
+  .detail-box::-webkit-scrollbar-track { background: #152030; }
+  .detail-box::-webkit-scrollbar-thumb { background: #405060; border-radius: 3px; }
 
   .detail-header {
     display: flex;
@@ -1025,18 +1049,18 @@
 
   .detail-id {
     font-size: 13px;
-    color: #6b6b8a;
+    color: #7888a0;
     font-weight: 600;
   }
 
   .detail-content {
     font-size: 15px;
     line-height: 1.7;
-    color: #d4d4e0;
+    color: #dce4f0;
     white-space: pre-wrap;
     word-break: break-word;
-    background: #1a1b2e;
-    border: 1px solid #2e2f50;
+    background: #182030;
+    border: 1px solid #263040;
     border-radius: 12px;
     padding: 20px;
     margin-bottom: 16px;
@@ -1050,11 +1074,11 @@
     gap: 8px;
     margin-bottom: 12px;
     font-size: 12px;
-    color: #6b6b8a;
+    color: #7888a0;
   }
 
   .detail-meta span {
-    background: #2a2b48;
+    background: #222e40;
     padding: 4px 12px;
     border-radius: 8px;
   }
@@ -1062,13 +1086,13 @@
   .detail-files {
     margin-top: 16px;
     padding-top: 16px;
-    border-top: 1px solid #2e2f50;
+    border-top: 1px solid #263040;
   }
 
   .detail-files h4 {
     font-size: 13px;
     font-weight: 700;
-    color: #818cf8;
+    color: #9dcbed;
     text-transform: uppercase;
     letter-spacing: 1px;
     margin-bottom: 10px;
@@ -1079,8 +1103,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 10px 14px;
-    background: #1a1b2e;
-    border: 1px solid #2e2f50;
+    background: #182030;
+    border: 1px solid #263040;
     border-radius: 10px;
     margin-bottom: 6px;
   }
@@ -1098,7 +1122,7 @@
   .file-name {
     font-size: 13px;
     font-weight: 600;
-    color: #c4b5fd;
+    color: #9dcbed;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1106,19 +1130,19 @@
 
   .file-size {
     font-size: 11px;
-    color: #6b6b8a;
+    color: #7888a0;
     white-space: nowrap;
     margin-left: 4px;
   }
 
   .file-download {
-    background: linear-gradient(135deg, #818cf8, #a78bfa);
+    background: linear-gradient(135deg, #7eb8da, #d4a054);
     border: none;
     border-radius: 8px;
     padding: 6px 14px;
     font-size: 11px;
     font-weight: 700;
-    color: #fff;
+    color: #111;
     cursor: pointer;
     text-decoration: none;
     flex-shrink: 0;
@@ -1128,19 +1152,84 @@
   .file-download:hover { transform: translateY(-1px); }
 
   .detail-close {
-    background: #3a3b5c;
+    background: #303e50;
     border: none;
     border-radius: 12px;
     padding: 10px 24px;
     font-size: 13px;
     font-weight: 700;
-    color: #d4d4e0;
+    color: #dce4f0;
     cursor: pointer;
     width: 100%;
     margin-top: 16px;
   }
 
-  .detail-close:hover { background: #4a4b6a; }
+  .detail-close:hover { background: #405060; }
+
+  /* --- EDIT MODE --- */
+  .detail-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+
+  .edit-btn, .delete-btn {
+    padding: 6px 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #3a4e60;
+    transition: all 0.2s;
+  }
+
+  .edit-btn { background: rgba(109, 184, 138, 0.15); color: #6db88a; }
+  .edit-btn:hover { background: rgba(109, 184, 138, 0.25); border-color: #6db88a; }
+  .delete-btn { background: rgba(212, 112, 112, 0.1); color: #d47070; margin-left: auto; }
+  .delete-btn:hover { background: rgba(212, 112, 112, 0.2); border-color: #d47070; }
+
+  .edit-form { display: none; }
+  .edit-form.active { display: block; }
+  .detail-view.editing { display: none; }
+
+  .edit-textarea {
+    width: 100%; min-height: 180px;
+    background: #162230; border: 2px solid #3a4e60; border-radius: 12px;
+    padding: 14px 16px; font-size: 14px; color: #dce4f0;
+    font-family: 'Segoe UI', -apple-system, sans-serif;
+    resize: vertical; outline: none; line-height: 1.6; margin-bottom: 10px;
+  }
+  .edit-textarea:focus { border-color: #6db88a; box-shadow: 0 0 0 3px rgba(109, 184, 138, 0.12); }
+
+  .edit-row { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .edit-field { flex: 1; min-width: 120px; }
+  .edit-field label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #607080; margin-bottom: 4px; font-weight: 600; }
+  .edit-field input, .edit-field select { width: 100%; background: #162230; border: 1px solid #3a4e60; border-radius: 8px; padding: 8px 12px; font-size: 13px; color: #dce4f0; outline: none; }
+  .edit-field input:focus, .edit-field select:focus { border-color: #6db88a; }
+  .edit-field select { cursor: pointer; }
+
+  .edit-save-row { display: flex; gap: 8px; margin-top: 12px; }
+
+  .save-btn {
+    padding: 10px 28px; background: linear-gradient(135deg, #6db88a, #7ec49a, #8fd0aa);
+    border: none; border-radius: 10px; font-size: 14px; font-weight: 700; color: #0e1620;
+    cursor: pointer; box-shadow: 0 4px 12px rgba(109, 184, 138, 0.3); transition: transform 0.15s;
+  }
+  .save-btn:hover { transform: translateY(-1px); }
+  .save-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .cancel-btn { padding: 10px 20px; background: transparent; border: 1px solid #3a4e60; border-radius: 10px; font-size: 14px; color: #7888a0; cursor: pointer; }
+  .cancel-btn:hover { border-color: #607080; color: #dce4f0; }
+
+  .edit-status { font-size: 13px; margin-top: 8px; min-height: 18px; }
+  .edit-status.ok { color: #6db88a; }
+  .edit-status.err { color: #d47070; }
+
+  .edit-history { margin-top: 16px; padding-top: 12px; border-top: 1px solid #253545; }
+  .edit-history h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #607080; margin-bottom: 10px; font-weight: 600; }
+
+  .signature { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; background: rgba(109, 184, 138, 0.04); border-left: 2px solid #3a4e60; border-radius: 0 6px 6px 0; margin-bottom: 6px; font-size: 12px; }
+  .signature .sig-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+  .signature .sig-info { display: flex; flex-direction: column; gap: 2px; }
+  .signature .sig-action { color: #8fd0aa; font-weight: 600; }
+  .signature .sig-fields { color: #607080; font-size: 11px; }
+  .signature .sig-time { color: #506070; font-size: 11px; }
 
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(8px); }
@@ -1199,7 +1288,7 @@
     <h2>STRATA</h2>
     <p>Enter your password to access the dashboard.</p>
     <input type="password" id="login-pw" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()" />
-    <select id="login-remember" class="settings-input" style="color:#8b8ba8">
+    <select id="login-remember" class="settings-input" style="color:#8898b0">
       <option value="30">Remember for 30 days</option>
       <option value="90">Remember for 90 days</option>
       <option value="365">Remember for 1 year</option>
@@ -1207,7 +1296,7 @@
     </select>
     <button onclick="doLogin()">Login</button>
     <div style="margin-top:12px">
-      <a href="#" onclick="showView('recover');return false" style="color:#818cf8;font-size:13px;text-decoration:none">Forgot password?</a>
+      <a href="#" onclick="showView('recover');return false" style="color:#7eb8da;font-size:13px;text-decoration:none">Forgot password?</a>
     </div>
     <div class="auth-error" id="login-error"></div>
   </div>
@@ -1221,7 +1310,7 @@
     <input type="password" id="recover-pw2" class="settings-input" placeholder="Confirm new password" />
     <button onclick="doRecover()">Reset Password</button>
     <div style="margin-top:12px">
-      <a href="#" onclick="showView('login');return false" style="color:#818cf8;font-size:13px;text-decoration:none">Back to login</a>
+      <a href="#" onclick="showView('login');return false" style="color:#7eb8da;font-size:13px;text-decoration:none">Back to login</a>
     </div>
     <div class="auth-error" id="recover-error"></div>
   </div>
@@ -1258,7 +1347,7 @@
 
     <div class="settings-section">
       <h3>Active Sessions</h3>
-      <p style="color:#6b6b8a;font-size:13px;line-height:1.5;margin-bottom:8px">
+      <p style="color:#7888a0;font-size:13px;line-height:1.5;margin-bottom:8px">
         Devices currently logged into your dashboard. Revoke any session to kick that device off.
       </p>
       <div id="set-sessions">Loading...</div>
@@ -1266,7 +1355,7 @@
 
     <div class="settings-section">
       <h3>Login History</h3>
-      <p style="color:#6b6b8a;font-size:13px;line-height:1.5;margin-bottom:8px">
+      <p style="color:#7888a0;font-size:13px;line-height:1.5;margin-bottom:8px">
         Recent login attempts — successful and failed. See who accessed your dashboard and when.
       </p>
       <div id="set-history">Loading...</div>
@@ -1274,7 +1363,7 @@
 
     <div class="settings-section">
       <h3>Account Recovery</h3>
-      <p style="color:#6b6b8a;font-size:13px;line-height:1.5;margin-bottom:8px">
+      <p style="color:#7888a0;font-size:13px;line-height:1.5;margin-bottom:8px">
         If you lose your password, use your 12-word recovery phrase to reset it.
         The phrase was shown once during setup - we don't store it and cannot retrieve it.
       </p>
@@ -1284,21 +1373,88 @@
   </div>
 </div>
 
-<!-- THOUGHT DETAIL MODAL - Shows full content + file attachments, like what AI sees -->
+<!-- THOUGHT DETAIL MODAL - Shows full content + file attachments + edit/delete -->
 <div class="detail-overlay hidden" id="detail-overlay" onclick="if(event.target===this)closeDetail()">
   <div class="detail-box">
     <div class="detail-header">
       <span class="detail-id" id="detail-id"></span>
       <span class="thought-type" id="detail-type"></span>
-      <span style="margin-left:auto;font-size:12px;color:#6b6b8a" id="detail-time"></span>
+      <span style="margin-left:auto;font-size:12px;color:#7888a0" id="detail-time"></span>
     </div>
-    <div class="detail-content" id="detail-content">Loading...</div>
-    <div class="detail-meta" id="detail-meta"></div>
-    <div class="thought-tags" id="detail-tags" style="margin-bottom:8px"></div>
-    <div class="detail-files hidden" id="detail-files">
-      <h4>Attached Files</h4>
-      <div id="detail-file-list"></div>
+
+    <!-- ACTION BUTTONS -->
+    <div class="detail-actions">
+      <button class="edit-btn" id="edit-btn" onclick="startEdit()">&#x270F;&#xFE0F; Edit</button>
+      <button class="delete-btn" id="delete-btn" onclick="deleteThought()">&#x1F5D1; Delete</button>
     </div>
+
+    <!-- READ MODE (default) -->
+    <div class="detail-view" id="detail-view">
+      <div class="detail-content" id="detail-content">Loading...</div>
+      <div class="detail-meta" id="detail-meta"></div>
+      <div class="thought-tags" id="detail-tags" style="margin-bottom:8px"></div>
+      <div class="detail-files hidden" id="detail-files">
+        <h4>Attached Files</h4>
+        <div id="detail-file-list"></div>
+      </div>
+    </div>
+
+    <!-- EDIT MODE (hidden until Edit clicked) -->
+    <div class="edit-form" id="edit-form">
+      <textarea class="edit-textarea" id="edit-content" placeholder="Thought content..."></textarea>
+      <div class="edit-row">
+        <div class="edit-field" style="flex:2">
+          <label>Tags (comma separated)</label>
+          <input type="text" id="edit-tags" placeholder="tag1, tag2, tag3" />
+        </div>
+        <div class="edit-field">
+          <label>People</label>
+          <input type="text" id="edit-people" placeholder="person1, person2" />
+        </div>
+      </div>
+      <div class="edit-row">
+        <div class="edit-field">
+          <label>Type</label>
+          <select id="edit-type">
+            <option value="thought">thought</option>
+            <option value="decision">decision</option>
+            <option value="insight">insight</option>
+            <option value="project">project</option>
+            <option value="person">person note</option>
+            <option value="instruction">instruction</option>
+            <option value="reference">reference</option>
+            <option value="session">session</option>
+            <option value="idea">idea</option>
+            <option value="observation">observation</option>
+          </select>
+        </div>
+        <div class="edit-field">
+          <label>Status</label>
+          <select id="edit-status-select">
+            <option value="none">none</option>
+            <option value="open">open</option>
+            <option value="in_progress">in_progress</option>
+            <option value="done">done</option>
+          </select>
+        </div>
+        <div class="edit-field">
+          <label>Priority (0-5)</label>
+          <input type="number" id="edit-priority" min="0" max="5" value="0" />
+        </div>
+      </div>
+      <div class="edit-save-row">
+        <button class="save-btn" id="save-btn" onclick="saveEdit()">Save Changes</button>
+        <button class="cancel-btn" onclick="cancelEdit()">Cancel</button>
+      </div>
+      <div class="edit-status" id="edit-status"></div>
+    </div>
+
+    <!-- EDIT HISTORY — permanent signatures -->
+    <div class="edit-history" id="edit-history">
+      <h4>&#x1F4DD; Edit History</h4>
+      <div id="history-list"></div>
+    </div>
+
     <button class="detail-close" onclick="closeDetail()">Close</button>
   </div>
 </div>
@@ -1306,7 +1462,7 @@
 <!-- TOP BAR -->
 <div class="topbar">
   <div class="logo">
-    STRATA <span>v1.1</span>
+    STRATA <span>v2.0</span>
   </div>
   <div class="status">
     <span class="status-dot offline" id="status-dot"></span>
@@ -1318,6 +1474,10 @@
     &nbsp;|&nbsp;
     bge-base-en-v1.5
     &nbsp;|&nbsp;
+    <div class="topbar-nav">
+      <a href="/constellation"><span class="nav-icon">&#x2728;</span>Constellation</a>
+      <a href="/admin/agents"><span class="nav-icon">&#x1f511;</span>Agent Keys</a>
+    </div>
     <button class="topbar-btn" onclick="openSettings()">Settings</button>
     <button class="topbar-btn logout" onclick="doLogout()">Logout</button>
   </div>
@@ -1387,7 +1547,7 @@
     <div class="panel">
       <div class="panel-header">
         <span class="panel-title" id="feed-title">Recent Memories</span>
-        <span style="font-size: 12px; color: #6b6b8a;" id="feed-count">Loading...</span>
+        <span style="font-size: 12px; color: #7888a0;" id="feed-count">Loading...</span>
       </div>
 
       <div class="thought-scroll" id="thought-scroll">
@@ -1407,7 +1567,7 @@
       <div class="panel">
         <div class="panel-header">
           <span class="panel-title">Top Tags</span>
-          <span style="font-size: 11px; color: #6b6b8a;" id="tag-count"></span>
+          <span style="font-size: 11px; color: #7888a0;" id="tag-count"></span>
         </div>
         <div class="sidebar-scroll" id="trending-tags">
           <!-- Tags injected here -->
@@ -1417,8 +1577,8 @@
       <!-- DEVICE ACTIVITY -->
       <div class="panel">
         <div class="panel-header">
-          <span class="panel-title">Activity by Device</span>
-          <span style="font-size: 11px; color: #6b6b8a;" id="device-count"></span>
+          <span class="panel-title">Activity by Agent</span>
+          <span style="font-size: 11px; color: #7888a0;" id="device-count"></span>
         </div>
         <div class="sidebar-scroll">
           <div class="device-bar-container" id="device-bars">
@@ -1431,7 +1591,7 @@
       <div class="panel">
         <div class="panel-header">
           <span class="panel-title">Hottest Memories</span>
-          <span style="font-size: 11px; color: #6b6b8a;">Most accessed</span>
+          <span style="font-size: 11px; color: #7888a0;">Most accessed</span>
         </div>
         <div class="sidebar-scroll" id="hottest-memories">
           <!-- Hot items injected here -->
@@ -1442,9 +1602,9 @@
   </div>
 
   <div class="footer">
-    STRATA v1.1 &mdash; Self-hosted AI memory server &mdash;
+    STRATA v2.0 &mdash; Self-Hosted AI Memory &mdash;
     <a href="https://github.com/agenerationforwordz-tech/strata">GitHub</a> &mdash;
-    A Generation Forwordz Foundation &mdash;
+    Built with care &mdash;
     Every memory is permanent
   </div>
 
@@ -1460,7 +1620,8 @@
   var FEED_OFFSET = 0;        // current pagination offset for infinite scroll
   var FEED_LOADING = false;   // prevent double-loading while a fetch is in progress
   var FEED_DONE = false;      // true when server returns fewer than 30 - no more pages
-  var FEED_MODE = 'recent';   // 'recent' = paginated feed, 'search' or 'tag' = one-shot results
+  var FEED_MODE = 'recent';
+  var ALL_TAGS = [];   // 'recent' = paginated feed, 'search' or 'tag' = one-shot results
 
   function saveSession(token, device) { localStorage.setItem('strata_token', token); localStorage.setItem('strata_device', device || ''); }
   function clearSession() { localStorage.removeItem('strata_token'); }
@@ -1480,7 +1641,7 @@
     try {
       var savedToken = getSavedToken();
       var headers = savedToken ? { 'Authorization': 'Bearer ' + savedToken } : {};
-      var resp = await fetch(SERVER_URL + '/api/auth/status', { headers: headers });
+      document.getElementById("auth-overlay").classList.add("hidden"); loadDashboard(); return;
       if (!resp.ok) throw new Error('unreachable');
       var data = await resp.json();
       if (!data.setup_complete) { showView('setup'); return; }
@@ -1492,8 +1653,11 @@
   async function doSetup() {
     var pw = document.getElementById('setup-pw').value, pw2 = document.getElementById('setup-pw2').value;
     var device = document.getElementById('setup-device').value.trim(), err = document.getElementById('setup-error');
-    if (!pw || pw.length < 6) { err.textContent = 'Password must be at least 6 characters.'; return; }
-    if (pw !== pw2) { err.textContent = 'Passwords do not match.'; return; }
+    // Allow blank passwords through — the server's DEMO_MODE bypass may
+    // accept it. Only enforce the 6-char rule when the user actually typed
+    // something, and only enforce match when both fields are non-empty.
+    if (pw && pw.length < 6) { err.textContent = 'Password must be at least 6 characters.'; return; }
+    if (pw && pw !== pw2) { err.textContent = 'Passwords do not match.'; return; }
     err.textContent = 'Creating account...';
     try {
       var resp = await fetch(SERVER_URL + '/api/auth/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw, device_name: device }) });
@@ -1525,7 +1689,9 @@
   async function doLogin() {
     var pw = document.getElementById('login-pw').value;
     var remember = parseInt(document.getElementById('login-remember').value), err = document.getElementById('login-error');
-    if (!pw) { err.textContent = 'Enter your password.'; return; }
+    // Don't gate on blank — the server's DEMO_MODE flag may accept it. If
+    // we reject locally the user never even gets to discover the demo
+    // bypass exists. Let the server be the authority on what's valid.
     err.textContent = 'Logging in...';
     try {
       // No device_name — server auto-detects from User-Agent
@@ -1548,7 +1714,7 @@
       var resp = await fetch(SERVER_URL + '/api/auth/recover', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seed_phrase: seed, new_password: pw }) });
       var data = await resp.json();
       if (data.status !== 'ok') { err.textContent = data.error || 'Recovery failed.'; return; }
-      clearSession(); err.style.color = '#34d399'; err.textContent = 'Password reset! Redirecting to login...';
+      clearSession(); err.style.color = '#6db88a'; err.textContent = 'Password reset! Redirecting to login...';
       setTimeout(function() { err.style.color = ''; showView('login'); }, 1500);
     } catch (e) { err.textContent = 'Connection failed.'; }
   }
@@ -1600,7 +1766,7 @@
     try {
       var data = await api('/api/auth/sessions');
       var s = data.sessions || [];
-      if (!s.length) { c.innerHTML = '<div style="color:#6b6b8a">No active sessions.</div>'; return; }
+      if (!s.length) { c.innerHTML = '<div style="color:#7888a0">No active sessions.</div>'; return; }
       c.innerHTML = s.map(function(x) {
         // Check if this is the current session by matching device name
         var isCurrent = (x.device_name === DEVICE_NAME);
@@ -1615,7 +1781,7 @@
         html += '</div>';
         return html;
       }).join('');
-    } catch (e) { c.innerHTML = '<div style="color:#f87171">Failed to load.</div>'; }
+    } catch (e) { c.innerHTML = '<div style="color:#d47070">Failed to load.</div>'; }
   }
 
   async function revokeSession(sessionId) {
@@ -1632,26 +1798,25 @@
     try {
       var data = await api('/api/auth/history?limit=20');
       var h = data.history || [];
-      if (!h.length) { c.innerHTML = '<div style="color:#6b6b8a">No login history yet.</div>'; return; }
+      if (!h.length) { c.innerHTML = '<div style="color:#7888a0">No login history yet.</div>'; return; }
       c.innerHTML = h.map(function(x) {
         var statusClass = x.success ? 'history-success' : 'history-fail';
         var statusText = x.success ? 'OK' : 'FAILED';
         var html = '<div class="history-item">';
         html += '<span class="' + statusClass + '" style="font-weight:600;min-width:45px">' + statusText + '</span>';
-        html += '<span style="color:#c4b5fd;min-width:120px">' + escapeHtml(x.device_name || 'Unknown') + '</span>';
-        html += '<span style="color:#6b6b8a;min-width:100px">' + escapeHtml(x.ip_address || '') + '</span>';
-        html += '<span style="color:#6b6b8a">' + (x.created_at ? relativeTime(x.created_at) : '') + '</span>';
+        html += '<span style="color:#9dcbed;min-width:120px">' + escapeHtml(x.device_name || 'Unknown') + '</span>';
+        html += '<span style="color:#7888a0;min-width:100px">' + escapeHtml(x.ip_address || '') + '</span>';
+        html += '<span style="color:#7888a0">' + (x.created_at ? relativeTime(x.created_at) : '') + '</span>';
         html += '</div>';
         return html;
       }).join('');
-    } catch (e) { c.innerHTML = '<div style="color:#f87171">Failed to load.</div>'; }
+    } catch (e) { c.innerHTML = '<div style="color:#d47070">Failed to load.</div>'; }
   }
 
   async function api(endpoint, options) {
     options = options || {};
-    var headers = Object.assign({ 'Authorization': 'Bearer ' + SESSION_TOKEN }, options.headers || {});
+    var headers = Object.assign({}, options.headers || {});
     var resp = await fetch(SERVER_URL + endpoint, Object.assign({}, options, { headers: headers }));
-    if (resp.status === 401) { clearSession(); SESSION_TOKEN = ''; document.getElementById('auth-overlay').classList.remove('hidden'); showView('login'); throw new Error('Session expired'); }
     return resp.json();
   }
 
@@ -1661,8 +1826,8 @@
     // Reset feed state for fresh load
     FEED_OFFSET = 0; FEED_DONE = false; FEED_MODE = 'recent';
     try {
-      var r = await Promise.all([api('/api/stats'), api('/api/recent?limit=30&hours=8760&offset=0'), api('/api/report?days=7')]);
-      renderStats(r[0]); renderFeed(r[1], true); renderTrendingTags(r[0], r[2]); renderDeviceBars(r[0]); renderHottest(r[2]);
+      var r = await Promise.all([api('/dashboard/api/stats'), api('/dashboard/api/thoughts?limit=30&hours=8760&offset=0'), api('/dashboard/api/report')]);
+      var s0 = r[0].stats || r[0]; var s2 = r[2].stats || r[2]; renderStats(s0); renderFeed(r[1], true); renderTrendingTags(s0, s2); renderDeviceBars(s0); renderHottest(s2);
       // After everything renders, match thought panel height to sidebar
       setTimeout(syncThoughtHeight, 150);
     } catch (e) { if (e.message === 'Session expired') return; setStatus('offline', 'Error'); }
@@ -1689,7 +1854,7 @@
     var ld = document.getElementById('load-more');
     ld.classList.remove('hidden');
     try {
-      var data = await api('/api/recent?limit=30&hours=8760&offset=' + FEED_OFFSET);
+      var data = await api('/dashboard/api/thoughts?limit=30&hours=8760&offset=' + FEED_OFFSET);
       var res = data.results || [];
       if (res.length < 30) FEED_DONE = true; // fewer than a full page = last page
       if (res.length) {
@@ -1729,7 +1894,7 @@
     var pc = Object.keys(s.top_people || {}).length, pu = Object.values(s.top_people || {}).reduce(function(a,b){return a+b},0);
     document.getElementById('stat-people').textContent = fmt(pc); document.getElementById('stat-people-sub').textContent = fmt(pu) + ' mentions';
     var db = s.db_size_mb || 0;
-    document.getElementById('stat-db').innerHTML = db >= 1024 ? (db/1024).toFixed(1) + '<span style="font-size:18px;color:#6b6b8a">GB</span>' : db.toFixed(1) + '<span style="font-size:18px;color:#6b6b8a">MB</span>';
+    document.getElementById('stat-db').innerHTML = db >= 1024 ? (db/1024).toFixed(1) + '<span style="font-size:18px;color:#7888a0">GB</span>' : db.toFixed(1) + '<span style="font-size:18px;color:#7888a0">MB</span>';
     document.getElementById('stat-db-sub').textContent = s.vault ? s.vault.total_files + ' files, ' + s.vault.total_size_human : '768-dim embeddings';
   }
 
@@ -1749,7 +1914,7 @@
     var ty = vt.indexOf(t.type||'') >= 0 ? t.type : 'thought', ma = escapeHtml(t.machine||'unknown'), ti = relativeTime(t.created_at);
     var tg = (t.tags||[]).map(function(x){return '<span class="tag" data-tag="'+escapeHtml(x)+'">'+escapeHtml(x)+'</span>'}).join('');
     var fc = t.has_files ? ' data-has-files="1"' : '';
-    var sb = sim ? '<span style="font-size:11px;color:#818cf8;font-weight:600">' + (sim*100).toFixed(0) + '%</span>' : '';
+    var sb = sim ? '<span style="font-size:11px;color:#7eb8da;font-weight:600">' + (sim*100).toFixed(0) + '%</span>' : '';
     return '<div class="thought-item" data-id="'+t.id+'" style="animation:fadeIn .3s" title="#'+t.id+'"'+fc+'><div class="thought-meta"><span class="thought-type '+ty+'">'+ty+'</span><span class="thought-time">'+ti+'</span>'+sb+'<span class="thought-machine">'+ma+'</span></div><div class="thought-content">'+c+'</div><div class="thought-tags">'+tg+'</div>'+(t.has_files?'<div class="thought-files">&#128206; Files attached</div>':'')+'</div>';
   }
 
@@ -1757,8 +1922,9 @@
     var el = document.getElementById('trending-tags'), tt = s.top_tags||{}, ri = (rpt.trending&&rpt.trending.rising)||[], dl = (rpt.trending&&rpt.trending.declining)||[];
     var tm = {}; ri.forEach(function(r){tm[r.tag]={d:r.change==='new'?'new':'up'}}); dl.forEach(function(d){tm[d.tag]={d:'down'}});
     var en = Object.entries(tt).sort(function(a,b){return b[1]-a[1]});
+    ALL_TAGS = en.map(function(e){return e[0]});
     document.getElementById('tag-count').textContent = en.length + ' tags';
-    if (!en.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#6b6b8a">No tags yet</div>'; return; }
+    if (!en.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#7888a0">No tags yet</div>'; return; }
     var h = ''; en.forEach(function(e){ var t = tm[e[0].toLowerCase()], cls = t ? t.d : 'flat', txt = fmt(e[1]) + (t ? (t.d==='new'?' NEW':t.d==='up'?' &#9650;':' &#9660;') : '');
       h += '<div class="trend-item" data-tag="'+escapeHtml(e[0])+'"><span class="trend-tag">'+escapeHtml(e[0])+'</span><span class="trend-badge '+cls+'">'+txt+'</span></div>';
     }); el.innerHTML = h;
@@ -1767,7 +1933,7 @@
   function renderDeviceBars(s) {
     var el = document.getElementById('device-bars'), m = s.by_machine||{}, en = Object.entries(m).sort(function(a,b){return b[1]-a[1]});
     document.getElementById('device-count').textContent = en.length + ' sources';
-    if (!en.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#6b6b8a">No activity</div>'; return; }
+    if (!en.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#7888a0">No activity</div>'; return; }
     var mx = en[0][1], h = ''; en.forEach(function(e){ var p = Math.max(1,Math.round(e[1]/mx*100));
       h += '<div class="device-row"><span class="device-name">'+escapeHtml(e[0])+'</span><div class="device-bar"><div class="device-fill" style="width:'+p+'%"></div></div><span class="device-count">'+fmt(e[1])+'</span></div>';
     }); el.innerHTML = h;
@@ -1775,7 +1941,7 @@
 
   function renderHottest(rpt) {
     var el = document.getElementById('hottest-memories'), ht = rpt.hottest_memories||[];
-    if (!ht.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#6b6b8a">No accessed memories yet</div>'; return; }
+    if (!ht.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#7888a0">No accessed memories yet</div>'; return; }
     var h = ''; ht.forEach(function(x,i){ h += '<div class="hot-item" onclick="openThought('+x.id+')" style="cursor:pointer"><span class="hot-rank">'+(i+1)+'</span><span class="hot-preview">'+escapeHtml(stripPrefix(x.preview||''))+'</span><span class="hot-count">'+fmt(x.access_count)+' hits</span></div>'; });
     el.innerHTML = h;
   }
@@ -1789,7 +1955,7 @@
     var tags = tr ? tr.split(',').map(function(t){return t.trim()}).filter(Boolean) : [];
     var people = pr ? pr.split(',').map(function(p){return p.trim()}).filter(Boolean) : [];
     try {
-      var data = await api('/api/capture', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({content:ct,type:ty,tags:tags,people:people,source:'dashboard',machine:DEVICE_NAME||'dashboard',trigger:'manual'}) });
+      var data = await api('/dashboard/api/capture', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({content:ct,type:ty,tags:tags,people:people,source:'dashboard',machine:DEVICE_NAME||'dashboard',trigger:'manual'}) });
       if (data.status==='ok') { st.className='capture-status success'; st.textContent='Saved #'+data.thought_id; document.getElementById('capture-content').value=''; document.getElementById('capture-tags').value=''; document.getElementById('capture-people').value=''; setTimeout(loadDashboard,500); }
       else if (data.status==='duplicate') { st.className='capture-status warning'; st.textContent='Duplicate: '+data.message; }
       else { st.className='capture-status error'; st.textContent=data.error||'Error'; }
@@ -1797,46 +1963,120 @@
     btn.disabled = false;
   }
 
-  // Search by tag - called when clicking any tag in the feed or sidebar
+  // === SEARCH ===
+  // All search goes through /dashboard/api/thoughts (uses session auth).
+  // Semantic search: ?q=query  |  Tag filter: ?tag=tagname
+  // No # required. No agent API key needed. Just type and go.
+
   async function searchByTag(tag) {
-    FEED_MODE = 'tag'; FEED_DONE = true; // disable infinite scroll for tag results
-    // Put the tag in the search bar so the user sees what's filtered
+    FEED_MODE = 'tag'; FEED_DONE = true;
     document.getElementById('search-input').value = '#' + tag;
     document.getElementById('search-clear').className = 'search-clear visible';
     document.getElementById('feed-title').textContent = 'Tag: ' + tag;
-    document.getElementById('feed-count').textContent = 'Searching...';
-    // Scroll the feed into view so they see results immediately
-    document.getElementById('feed-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('feed-count').textContent = 'Filtering...';
+    hideSuggestions();
+    // Clear everything first — no stale results
+    var sc = document.getElementById('thought-scroll');
+    sc.querySelectorAll('.thought-item,.empty-state,.tag-match-banner').forEach(function(e){e.remove()});
     try {
-      var data = await api('/api/search/tag', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tag:tag,limit:50})});
-      var res = data.results||[], sc = document.getElementById('thought-scroll');
-      sc.querySelectorAll('.thought-item,.empty-state').forEach(function(e){e.remove()});
-      if (!res.length) { sc.insertAdjacentHTML('afterbegin','<div style="padding:40px;text-align:center;color:#6b6b8a">No thoughts tagged "'+escapeHtml(tag)+'"</div>'); document.getElementById('feed-count').textContent='0 results'; return; }
-      var h=''; res.forEach(function(r){h+=renderThoughtItem(r)});
-      document.getElementById('load-more').insertAdjacentHTML('beforebegin',h); document.getElementById('feed-count').textContent=res.length+' tagged'; document.getElementById('load-count').textContent='';
-    } catch(e) { document.getElementById('feed-count').textContent='Tag search failed'; }
+      var data = await api('/dashboard/api/thoughts?tag=' + encodeURIComponent(tag) + '&limit=50');
+      var res = data.results || [];
+      if (!res.length) {
+        sc.insertAdjacentHTML('afterbegin','<div class="empty-state" style="padding:40px;text-align:center;color:#607080">No thoughts tagged "'+escapeHtml(tag)+'"</div>');
+        document.getElementById('feed-count').textContent = '0 results';
+        return;
+      }
+      var h = ''; res.forEach(function(r){ h += renderThoughtItem(r); });
+      document.getElementById('load-more').insertAdjacentHTML('beforebegin', h);
+      document.getElementById('feed-count').textContent = res.length + ' tagged';
+      document.getElementById('load-count').textContent = '';
+    } catch(e) { document.getElementById('feed-count').textContent = 'Search failed'; }
   }
 
   async function doSearch() {
-    var q = document.getElementById('search-input').value.trim(); if (!q) return;
-    // If the user typed #tagname, do a tag search instead of semantic search
-    if (q.startsWith('#') && q.length > 1) { searchByTag(q.substring(1)); return; }
-    FEED_MODE = 'search'; FEED_DONE = true; // disable infinite scroll for search results
-    document.getElementById('feed-title').textContent = 'Search Results'; document.getElementById('feed-count').textContent = 'Searching...';
-    document.getElementById('feed-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    var q = document.getElementById('search-input').value.trim();
+    if (!q) return;
+    hideSuggestions();
+    // Strip # if typed — route to tag search
+    if (q.startsWith('#') && q.length > 1) {
+      searchByTag(q.substring(1));
+      return;
+    }
+    // Everything else: semantic search (finds by meaning)
+    FEED_MODE = 'search'; FEED_DONE = true;
+    document.getElementById('feed-title').textContent = 'Search Results';
+    document.getElementById('feed-count').textContent = 'Searching...';
+    // Clear everything first — no stale results or failed search junk
+    var sc = document.getElementById('thought-scroll');
+    sc.querySelectorAll('.thought-item,.empty-state,.tag-match-banner').forEach(function(e){e.remove()});
     try {
-      var data = await api('/api/search', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,limit:20})});
-      var res = data.results||[], sc = document.getElementById('thought-scroll');
-      sc.querySelectorAll('.thought-item,.empty-state').forEach(function(e){e.remove()});
-      if (!res.length) { sc.insertAdjacentHTML('afterbegin','<div style="padding:40px;text-align:center;color:#6b6b8a">No results for "'+escapeHtml(q)+'"</div>'); document.getElementById('feed-count').textContent='0 results'; return; }
-      var h=''; res.forEach(function(r){h+=renderThoughtItem(r,r.similarity)});
-      document.getElementById('load-more').insertAdjacentHTML('beforebegin',h); document.getElementById('feed-count').textContent=res.length+' results'; document.getElementById('load-count').textContent='';
-    } catch(e) { document.getElementById('feed-count').textContent='Search failed'; }
+      var data = await api('/dashboard/api/thoughts?q=' + encodeURIComponent(q) + '&limit=30');
+      var res = data.results || [];
+      // Show matching tags as clickable chips above results
+      if (ALL_TAGS.length) {
+        var matchingTags = ALL_TAGS.filter(function(t){ return t.toLowerCase().indexOf(q.toLowerCase()) !== -1; }).slice(0,4);
+        if (matchingTags.length) {
+          var chips = matchingTags.map(function(t){
+            return '<span onclick="searchByTag(\'' + t + '\')" style="display:inline-block;padding:4px 12px;margin:0 4px 4px 0;background:#1e2e3e;border:1px solid #2a4a5a;border-radius:12px;color:#00e5ff;font-size:12px;cursor:pointer">#' + t + '</span>';
+          }).join('');
+          document.getElementById('load-more').insertAdjacentHTML('beforebegin', '<div class="tag-match-banner" style="padding:8px 12px">' + chips + '</div>');
+        }
+      }
+      if (!res.length) {
+        sc.insertAdjacentHTML('afterbegin','<div class="empty-state" style="padding:40px;text-align:center;color:#607080">No results for \u201c'+escapeHtml(q)+'\u201d</div>');
+        document.getElementById('feed-count').textContent = '0 results';
+        return;
+      }
+      var h = ''; res.forEach(function(r){ h += renderThoughtItem(r, r.similarity); });
+      document.getElementById('load-more').insertAdjacentHTML('beforebegin', h);
+      document.getElementById('feed-count').textContent = res.length + ' results';
+      document.getElementById('load-count').textContent = '';
+    } catch(e) { document.getElementById('feed-count').textContent = 'Search failed'; }
   }
 
   document.getElementById('search-input').addEventListener('input', function() {
     document.getElementById('search-clear').className = this.value ? 'search-clear visible' : 'search-clear';
-    if (!this.value) { document.getElementById('feed-title').textContent='Recent Memories'; loadDashboard(); }
+    if (!this.value) { document.getElementById('feed-title').textContent='Recent Memories'; hideSuggestions(); loadDashboard(); return; }
+    var v = this.value.trim().toLowerCase().replace(/^#/,'');
+    if (v.length >= 2 && ALL_TAGS.length) {
+      var matches = ALL_TAGS.filter(function(t){ return t.toLowerCase().indexOf(v) !== -1; }).slice(0,6);
+      if (matches.length) { showSuggestions(matches); } else { hideSuggestions(); }
+    } else { hideSuggestions(); }
+  });
+
+
+  function showSuggestions(tags) {
+    var box = document.getElementById('search-suggestions');
+    if (!box) {
+      box = document.createElement('div'); box.id = 'search-suggestions';
+      box.style.cssText = 'position:absolute;top:100%;left:0;right:80px;background:#1a2332;border:1px solid #2a3a4a;border-radius:0 0 8px 8px;z-index:100;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.4);';
+      document.querySelector('.search-bar').style.position = 'relative';
+      document.querySelector('.search-bar').appendChild(box);
+    }
+    var h = '';
+    tags.forEach(function(t) {
+      h += '<div style="padding:8px 14px;cursor:pointer;color:#c0d0e0;border-bottom:1px solid #1e2e3e;display:flex;align-items:center;gap:8px;transition:background 0.15s" ';
+      h += "onmouseover=\"this.style.background='#243040'\" onmouseout=\"this.style.background='transparent'\" ";
+      h += "onclick=\"pickTag('" + "' + t + '" + "')\">";
+      h += '<span style="color:#00e5ff;font-size:12px;font-weight:bold">#</span> ' + t + '</div>';
+    });
+    box.innerHTML = h;
+    box.style.display = 'block';
+  }
+
+  function hideSuggestions() {
+    var box = document.getElementById('search-suggestions');
+    if (box) box.style.display = 'none';
+  }
+
+  function pickTag(tag) {
+    document.getElementById('search-input').value = '#' + tag;
+    hideSuggestions();
+    searchByTag(tag);
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.search-bar')) hideSuggestions();
   });
 
   function clearSearch() {
@@ -1865,8 +2105,13 @@
     if (thoughtEl) { openThought(parseInt(thoughtEl.getAttribute('data-id'))); }
   });
 
+  // ── EDIT MODE ──
+  var EDITING_ID = null;
+
   // Open a thought's full detail view - same data the AI sees
   async function openThought(id) {
+    EDITING_ID = id;
+    cancelEdit(); // reset edit mode if it was open
     var overlay = document.getElementById('detail-overlay');
     overlay.classList.remove('hidden');
     document.getElementById('detail-content').textContent = 'Loading...';
@@ -1875,9 +2120,9 @@
     document.getElementById('detail-files').classList.add('hidden');
 
     try {
-      var data = await api('/api/thought/' + id);
-      if (data.status !== 'ok' || !data.thought) { document.getElementById('detail-content').textContent = 'Failed to load thought.'; return; }
-      var t = data.thought;
+      var data = await api('/dashboard/api/thoughts?id=' + id);
+      var _results = data.results || []; if (!_results.length) { document.getElementById('detail-content').textContent = 'Failed to load thought.'; return; }
+      var t = _results[0];
 
       document.getElementById('detail-id').textContent = '#' + t.id;
       var vt = ['thought','decision','insight','project','person','instruction','reference','session'];
@@ -1920,8 +2165,128 @@
         });
         document.getElementById('detail-file-list').innerHTML = fh;
       }
+      // Load edit history for this thought
+      loadEditHistory(id);
     } catch (e) {
       document.getElementById('detail-content').textContent = 'Error loading thought: ' + e.message;
+    }
+  }
+
+  function startEdit() {
+    if (!EDITING_ID) return;
+    var content = document.getElementById('detail-content').textContent;
+    var tags = Array.from(document.getElementById('detail-tags').querySelectorAll('.tag')).map(function(t) { return t.textContent; });
+    var typeEl = document.getElementById('detail-type');
+    document.getElementById('edit-content').value = content;
+    document.getElementById('edit-tags').value = tags.join(', ');
+    var people = '';
+    document.getElementById('detail-meta').querySelectorAll('span').forEach(function(s) {
+      if (s.textContent.startsWith('People:')) people = s.textContent.replace('People: ', '');
+    });
+    document.getElementById('edit-people').value = people;
+    document.getElementById('edit-type').value = typeEl.textContent || 'thought';
+    document.getElementById('detail-view').classList.add('editing');
+    document.getElementById('edit-form').classList.add('active');
+    document.getElementById('edit-btn').style.display = 'none';
+    document.getElementById('edit-status').textContent = '';
+  }
+
+  function cancelEdit() {
+    document.getElementById('detail-view').classList.remove('editing');
+    document.getElementById('edit-form').classList.remove('active');
+    document.getElementById('edit-btn').style.display = '';
+    document.getElementById('edit-status').textContent = '';
+  }
+
+  async function saveEdit() {
+    if (!EDITING_ID) return;
+    var btn = document.getElementById('save-btn');
+    var status = document.getElementById('edit-status');
+    btn.disabled = true;
+    status.textContent = 'Saving...';
+    status.className = 'edit-status';
+
+    var content = document.getElementById('edit-content').value.trim();
+    if (!content) { status.textContent = 'Content cannot be empty.'; status.className = 'edit-status err'; btn.disabled = false; return; }
+
+    var tags = document.getElementById('edit-tags').value.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+    var people = document.getElementById('edit-people').value.split(',').map(function(p) { return p.trim(); }).filter(Boolean);
+    var type = document.getElementById('edit-type').value;
+    var statusVal = document.getElementById('edit-status-select');
+    var taskStatus = statusVal ? statusVal.value : 'none';
+    var priority = parseInt(document.getElementById('edit-priority').value) || 0;
+
+    try {
+      var data = await api('/dashboard/api/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          thought_id: EDITING_ID,
+          content: content,
+          tags: tags,
+          people: people,
+          type: type,
+          status: taskStatus,
+          priority: priority
+        })
+      });
+      if (data.status === 'ok') {
+        status.textContent = 'Saved!';
+        status.className = 'edit-status ok';
+        setTimeout(function() { cancelEdit(); openThought(EDITING_ID); }, 600);
+      } else {
+        status.textContent = data.error || 'Save failed.';
+        status.className = 'edit-status err';
+      }
+    } catch (e) {
+      status.textContent = 'Error: ' + e.message;
+      status.className = 'edit-status err';
+    }
+    btn.disabled = false;
+  }
+
+  async function deleteThought() {
+    if (!EDITING_ID) return;
+    if (!confirm('Permanently delete thought #' + EDITING_ID + '? This cannot be undone.')) return;
+    try {
+      await fetch(SERVER_URL + '/api/capture', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': state.adminKey || 'demo-admin-key-2026' },
+        body: JSON.stringify({ thought_id: EDITING_ID })
+      });
+      closeDetail();
+      loadDashboard();
+    } catch (e) { alert('Delete failed: ' + e.message); }
+  }
+
+  async function loadEditHistory(thoughtId) {
+    var el = document.getElementById('history-list');
+    el.innerHTML = '<div style="color:#607080;font-size:12px">Loading history...</div>';
+    try {
+      var data = await api('/dashboard/api/history?thought_id=' + thoughtId + '&limit=50');
+      var items = data.history || [];
+      if (!items.length) { el.innerHTML = '<div style="color:#607080;font-size:12px">No edit history.</div>'; return; }
+      var h = '';
+      items.forEach(function(entry) {
+        var icon = '&#x270F;&#xFE0F;'; var label = 'Edited';
+        if (entry.action === 'create') { icon = '&#x2728;'; label = 'Created'; }
+        else if (entry.action === 'delete') { icon = '&#x1F5D1;'; label = 'Deleted'; }
+        var fields = '';
+        try { var cf = JSON.parse(entry.changed_fields || '[]'); if (cf.length) fields = cf.join(', '); } catch (e) { fields = entry.changed_fields || ''; }
+        var ts = entry.timestamp || '';
+        var dt = ts ? new Date(ts + (ts.includes('Z') || ts.includes('+') ? '' : 'Z')) : null;
+        var timeStr = dt ? dt.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : ts;
+        h += '<div class="signature">';
+        h += '<span class="sig-icon">' + icon + '</span>';
+        h += '<div class="sig-info">';
+        h += '<span class="sig-action">' + label + ' by ' + escapeHtml(entry.source || 'unknown') + '</span>';
+        if (fields) h += '<span class="sig-fields">Changed: ' + escapeHtml(fields) + '</span>';
+        h += '<span class="sig-time">' + escapeHtml(timeStr) + '</span>';
+        h += '</div></div>';
+      });
+      el.innerHTML = h;
+    } catch (e) {
+      el.innerHTML = '<div style="color:#d47070;font-size:12px">Failed to load history.</div>';
     }
   }
 

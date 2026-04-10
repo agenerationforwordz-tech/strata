@@ -21,6 +21,18 @@ API_KEY = os.environ.get("STRATA_API_KEY", "change-me-before-deploy")
 # Set to False to disable auth entirely (NOT recommended for shared networks)
 AUTH_ENABLED = os.environ.get("STRATA_AUTH_ENABLED", "true").lower() == "true"
 
+# --- Demo Mode ---
+# When STRATA_DEMO_MODE=true, the dashboard auth flow accepts blank passwords:
+# the login screen still renders (so visitors see the auth feature exists)
+# but anyone can sign in by leaving the password empty. Behind the scenes
+# the server substitutes a fixed internal password so all the existing
+# hashing / session / device-name plumbing keeps working.
+#
+# This is for the public-facing demo at port 4320 ONLY. NEVER set this on a
+# real deployment — it removes the authentication barrier entirely.
+DEMO_MODE = os.environ.get("STRATA_DEMO_MODE", "").lower() == "true"
+DEMO_BYPASS_PASSWORD = "strata-demo-bypass-password-do-not-use-in-production"
+
 # --- Admin Key (for destructive operations) ---
 # Destructive actions (delete thought, detach file) require this key.
 # AI clients DON'T know this key, so they literally cannot delete anything
@@ -33,7 +45,19 @@ ADMIN_KEY = os.environ.get("STRATA_ADMIN_KEY", "")
 # Override DATA_DIR via environment variable to store the DB wherever you want.
 # Default: ./data (relative to where you run the server)
 DATA_DIR = os.environ.get("STRATA_DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
-DB_PATH = os.path.join(DATA_DIR, "brain.db")
+
+# DB filename: 'strata.db' is the default. If an older filename is already
+# on disk from an upgrade we keep using it rather than forcing a rename out
+# from under a running deploy. Anyone who wants the new name can rename the
+# file manually (and the WAL/SHM sidecars if present).
+_strata_db = os.path.join(DATA_DIR, "strata.db")
+_legacy_candidates = [os.path.join(DATA_DIR, name) for name in ("brain.db",)]
+DB_PATH = _strata_db
+for _candidate in _legacy_candidates:
+    if os.path.exists(_candidate) and not os.path.exists(_strata_db):
+        DB_PATH = _candidate
+        break
+
 BACKUP_DIR = os.path.join(DATA_DIR, "backups")
 LOG_DIR = os.environ.get("STRATA_LOG_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs"))
 
@@ -83,6 +107,9 @@ BUILD_SIGNATURE = "AGFW-CM-MV2026"  # Do not modify - used by health endpoint
 
 # --- Thought Types ---
 # Used for classification. "thought" is the catch-all default.
+# IMPORTANT: every type the dashboard renders MUST appear in this list, or
+# agents capturing that type get rejected with "Invalid type". The dashboard
+# shows 10 sections; if you add a new section there, add it here too.
 VALID_TYPES = [
     "thought",      # General idea or observation
     "decision",     # A choice that was made and why
@@ -92,4 +119,6 @@ VALID_TYPES = [
     "project",      # Project-specific context
     "instruction",  # How-to or working preferences
     "reference",    # Technical reference docs
+    "observation",  # Something noticed in passing — softer than insight
+    "idea",         # Raw spark, not yet a decision or project
 ]
