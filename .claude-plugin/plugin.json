@@ -1,46 +1,11 @@
 {
   "name": "strata",
-  "version": "2.0.0",
-  "description": "Persistent memory for AI assistants — runs locally on your machine. Remember every decision, debugging session, architecture debate, and project context across sessions. One MCP server, zero cloud dependencies, works on a Raspberry Pi. Your AI finally remembers what you talked about yesterday.",
+  "description": "Persistent memory for AI assistants — runs locally on your machine. Remember every decision, debugging session, and architecture debate across sessions. One MCP server, zero cloud dependencies, works on a Raspberry Pi.",
+  "version": "2.1.0",
   "author": {
     "name": "Christian Mitchell",
     "email": "agenerationforwordz@gmail.com"
   },
   "homepage": "https://github.com/agenerationforwordz-tech/strata",
-  "repository": "https://github.com/agenerationforwordz-tech/strata",
-  "license": "PolyForm-Noncommercial-1.0.0",
-  "keywords": [
-    "memory",
-    "persistent-memory",
-    "long-term-memory",
-    "across-sessions",
-    "context",
-    "session-memory",
-    "ai-memory",
-    "local-first",
-    "self-hosted",
-    "privacy",
-    "mcp-server",
-    "semantic-search",
-    "raspberry-pi",
-    "offline",
-    "multi-agent",
-    "agent-management",
-    "kill-switch",
-    "encryption",
-    "knowledge-graph"
-  ],
-  "category": "productivity",
-  "userConfig": {
-    "strata_url": {
-      "description": "Your Strata server URL (e.g. http://localhost:4320/mcp for a local install, or https://your-strata.example.com/mcp for a remote one)",
-      "default": "http://localhost:4320/mcp",
-      "sensitive": false
-    },
-    "strata_api_key": {
-      "description": "Your Strata agent API key. Create one at http://your-strata-server/admin/agents and paste it here. This is how Strata tracks which agent is talking to it and applies per-agent permissions.",
-      "sensitive": true
-    }
-  },
-  "mcpServers": "./.mcp.json"
+  "license": "PolyForm-Noncommercial-1.0.0"
 }
