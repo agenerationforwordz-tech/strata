@@ -5,7 +5,7 @@ A pre-populated Strata database so you can see what the system looks like with r
 ## What's in here
 
 - **`strata.db`** — SQLite database with **666 curated thoughts** about Strata itself: how the system works, why it was designed this way, what it's good at, what it's not, real-world quotes from the build process. Every thought is embedded with the same `BAAI/bge-base-en-v1.5` model the live server uses, so semantic search works out of the box.
-- **3 sample agent placeholders** in the `agent_keys` table — `claude-code`, `codex-cli`, `vox` — each with their own identity color so the constellation viewer renders them distinctly. The keys are obvious placeholders (`agent-DEMO-...`) — register your own real agents from `/admin/agents` before using the demo as a real install.
+- **3 sample agent placeholders** in the `agent_keys` table — `claude-code`, `codex-cli`, `vox` — each with their own identity color so the constellation viewer renders them distinctly. **All three are shipped DISABLED (`enabled=0`)** so the free-tier 3-active hard lock doesn't fire when a new user registers their first real agent. The keys are obvious placeholders (`agent-DEMO-...`) — register your own real agents from `/admin/agents` before using the demo as a real install.
 - **Zero personal data, zero session history, zero login records.** The demo was sanitized before shipping. No PII, no real API keys.
 
 ## How to use it

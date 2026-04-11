@@ -86,15 +86,37 @@ cp demo/strata.db data/strata.db
 STRATA_DEMO_MODE=true python server.py
 ```
 
+> ⏱️ **First install takes 5–15 minutes.** `pip install -r requirements.txt` downloads about **700 MB** of binary wheels for the embedding model runtime (`fastembed`, `onnxruntime`, `numpy`, `transformers` tokenizer support). **Don't kill the install if it appears stuck** — it's downloading binaries in the background. Subsequent installs reuse the venv and take seconds. Run with `pip install -r requirements.txt --progress-bar on` if you want to watch the byte count tick up.
+
 Open these in your browser:
 
 | URL | What you see |
 |---|---|
 | `http://localhost:4320/dashboard` | Web dashboard — login with **blank password** (demo mode) |
 | `http://localhost:4320/constellation` | 3D constellation viewer with all 666 thoughts laid out in sacred-geometry clusters |
-| `http://localhost:4320/admin/agents` | Per-agent key management with the 3 sample agents and their identity colors |
+| `http://localhost:4320/admin/agents` | Per-agent key management with the 3 sample agents (all disabled by default — enable one or create your own to start using Strata) |
 
 See [`demo/README.md`](demo/README.md) for the full demo dataset details, including how to regenerate your own.
+
+### Windows install notes
+
+A few Windows-specific gotchas worth knowing about:
+
+- **Git "dubious ownership" error on the D: drive.** If you clone Strata to `D:\` or any non-system drive, Git may refuse to operate on the repo with `fatal: detected dubious ownership in repository`. Fix:
+  ```powershell
+  git config --global --add safe.directory 'D:/Claude Code Projects/strata'
+  ```
+  (Replace the path with wherever you cloned.)
+- **PowerShell env vars use `$env:`, not `export`.** To set the demo-mode flag and run:
+  ```powershell
+  $env:STRATA_DEMO_MODE = "true"
+  python server.py
+  ```
+  For persistent env vars across sessions:
+  ```powershell
+  [System.Environment]::SetEnvironmentVariable('STRATA_DEMO_MODE','true','User')
+  ```
+- **Stale `pip` processes can hold file locks** in the venv during a long install. If you cancel an install and re-run it and get permission errors, kill any leftover python.exe processes via Task Manager or `Stop-Process -Name python -Force` and try again.
 
 ## Getting started (real install, no demo data)
 
@@ -108,14 +130,17 @@ source venv/bin/activate  # Linux/macOS
 
 pip install -r requirements.txt
 
-# Set your keys
-export STRATA_API_KEY="pick-something-secure"
+# Optional: legacy fallback admin key for delete operations.
+# In v2, every agent has its own key issued from /admin/agents,
+# but this admin key is required for destructive operations.
 export STRATA_ADMIN_KEY="different-key-for-delete-ops"
 
 python server.py
 ```
 
-First request downloads the embedding model (~170MB). After that it's cached.
+> ⏱️ Same first-install warning as above — `pip install -r requirements.txt` is downloading ~700 MB of binary wheels for the embedding model runtime. Plan for 5–15 minutes on first install.
+
+After the server starts, open `http://localhost:4320/admin/agents` to register your first agent. Per-agent keys are how AI clients connect — see the "Connecting your AI" section below.
 
 Server runs at `http://0.0.0.0:4320`.
 
@@ -128,8 +153,8 @@ First, register the agent at `http://your-server:4320/admin/agents` and copy its
 Strata ships as a Claude Code plugin. Add the marketplace once, then install:
 
 ```bash
-claude plugin marketplace add agenerationforwordz-tech/Strata-plugins
-claude plugin install strata@Strata-plugins
+claude plugin marketplace add agenerationforwordz-tech/strata-plugins
+claude plugin install strata@strata-plugins
 ```
 
 During install you'll be prompted for two things:
@@ -161,7 +186,35 @@ Or add to `~/.claude/settings.json`:
 
 ### Codex CLI
 
-Same format in your Codex MCP config — register a `codex` agent at `/admin/agents`, copy the key, set it in the `X-API-Key` header.
+Codex CLI's MCP config lives in `~/.codex/config.toml` (Windows: `C:\Users\<you>\.codex\config.toml`). Add this block:
+
+```toml
+[mcp_servers.strata]
+url = "http://your-server-ip:4320/mcp"
+env_http_headers = { "X-API-Key" = "STRATA_CODEX_API_KEY" }
+startup_timeout_sec = 15.0
+tool_timeout_sec = 60
+```
+
+Then set the env var that the `env_http_headers` line references — Codex resolves it at startup, not at config-load time:
+
+**Linux/macOS:**
+```bash
+export STRATA_CODEX_API_KEY="agent-your-codex-key-here"
+```
+
+**Windows (persistent across sessions):**
+```powershell
+[System.Environment]::SetEnvironmentVariable('STRATA_CODEX_API_KEY','agent-your-codex-key-here','User')
+```
+
+Verify with:
+```bash
+codex mcp get strata
+```
+You should see the entry with `enabled: true`.
+
+> ⚠️ **Known Codex CLI issue (as of v0.120.0 on Windows):** the streamable HTTP transport discovers Strata's tools correctly, but `codex exec` may cancel actual tool calls client-side with `user cancelled MCP tool call`. This appears to be a Codex CLI bug, not a Strata bug — Strata's server logs show `200 OK` on the MCP requests. If you hit this, report it to the Codex CLI repo. The same Strata server works fine with Claude Code, the dashboard, and direct REST calls.
 
 ### How your agent learns to use Strata
 
