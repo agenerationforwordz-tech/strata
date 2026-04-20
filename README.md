@@ -366,7 +366,6 @@ All in `config.py`. Override with environment variables:
 | `STRATA_DATA_DIR` | `./data` | Database location |
 | `STRATA_VAULT_DIR` | `./data/vault` | File vault location |
 | `STRATA_AUTH_ENABLED` | `true` | Kill switch for auth (don't) |
-| `STRATA_MAX_ACTIVE_AGENTS` | `3` | Free-tier hard lock — max simultaneously enabled agents |
 | `STRATA_MAX_TOTAL_AGENTS` | `10` | Anti-spam ceiling on total registered agents |
 | `STRATA_DEMO_MODE` | *(unset)* | If `true`, dashboard accepts blank passwords (public demos) |
 | `STRATA_DB_ENCRYPT` | *(unset)* | If `true`, opens DB via SQLCipher (run `setup_encryption.sh` first) |
@@ -444,13 +443,6 @@ v2 ships per-agent keys. Open `/admin/agents`, click "Register New Agent", give 
 
 The dedicated human admin key (`STRATA_ADMIN_KEY`) is always separate and never appears in the agent table. It's the master override for the operations no agent should be able to do on its own — re-enabling the kill switch, granting admin to other agents, raising the active-agent cap.
 
-### Free-tier hard lock
-
-Free Strata installs are capped at **3 active agents at once**. You can register up to `STRATA_MAX_TOTAL_AGENTS` (default 10) agents in total, but only 3 of them can have `enabled=1` at any moment. Hit the cap while creating a 4th and the new agent lands `enabled=0` (parked) — flip an existing one off to free a slot, or upgrade.
-
-The cap is enforced at the data-access layer in `agent_keys.py`, so every entrypoint trips over it (admin HTTP API, CLI, future UI, direct module import). Bypassing it requires editing the source and running unlicensed — which is exactly what the [PolyForm Noncommercial license](LICENSE) doesn't permit.
-
-Paid commercial installs raise the cap by setting `STRATA_MAX_ACTIVE_AGENTS` in the server environment. No code change needed.
 
 ## Global MCP kill switch
 
@@ -615,7 +607,6 @@ Minimum specs: any machine with 2GB RAM, 2GB free disk, and Python 3.10+.
 ## Security
 
 - **Per-agent keys** - every AI agent gets its own key with granular `read / write / delete / admin / kill` flags. Revoke or disable any one without taking the others down.
-- **Free-tier hard lock** - 3 active agents max, enforced at the data-access layer. No client-side bypass.
 - **MCP global kill switch** - one toggle locks every agent out. Asymmetric: agents can disable, only humans can re-enable.
 - **Dashboard auth** - PBKDF2-SHA256 with 480K iterations, random 32-byte salt, constant-time comparison
 - **12-word seed phrase** recovery - hashed and stored permanently, never in plaintext
