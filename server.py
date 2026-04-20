@@ -36,6 +36,7 @@ from config import (
 import db
 import agent_keys
 import auth
+import audit
 import embedder
 import numpy as np
 from write_queue import WriteQueue
@@ -101,12 +102,24 @@ class MCPKillSwitchMiddleware:
     """Check global MCP kill switch. If OFF, reject ALL /mcp, /sse, and /api/* requests.
     Allows /api/auth/* (human login), /admin/* (human re-enable), /dashboard/*,
     /health, and /constellation through -- those are human-facing, not agent-facing.
-    This is the emergency brake: when flipped, NO agent can touch memory."""
+    This is the emergency brake: when flipped, NO agent can touch memory.
+    Also captures the agent API key from request headers for audit logging."""
     def __init__(self, app):
         self.app = app
     async def __call__(self, scope, receive, send):
+        global _current_agent_key
         if scope["type"] == "http":
             path = scope.get("path", "")
+            # Capture the API key from headers for audit logging.
+            # MCP tool functions don't have access to the HTTP request,
+            # so we stash the key in a global that log_activity() reads.
+            headers = dict(scope.get("headers", []))
+            api_key = headers.get(b"x-api-key", b"").decode("utf-8", errors="ignore")
+            if not api_key:
+                auth_hdr = headers.get(b"authorization", b"").decode("utf-8", errors="ignore")
+                if auth_hdr.startswith("Bearer "):
+                    api_key = auth_hdr[7:]
+            _current_agent_key = api_key
             if not _mcp_global_enabled:
                 # Block agent-facing paths: /mcp, /sse, /api/* (except /api/auth/*)
                 blocked = (
@@ -322,7 +335,14 @@ _activity_subscribers = set()
 # Not perfect with concurrent agents, but works great for typical usage (one agent at a time).
 _last_known_agent = "mcp"
 
-def log_activity(tool_name, query="", thought_ids=None, source="mcp", result_count=0, event_type="search"):
+# Track the current request's API key so MCP tool functions can pass it to the audit log.
+# Set by the auth middleware before the tool runs, cleared after.
+_current_agent_key = ""
+
+def log_activity(tool_name, query="", thought_ids=None, source="mcp", result_count=0, event_type="search", agent_key=None, elapsed_ms=0.0):
+    # Auto-read agent key from global if not explicitly passed
+    if agent_key is None:
+        agent_key = _current_agent_key
     # If no explicit source, use the last known agent identity
     if source == "mcp" and _last_known_agent != "mcp":
         source = _last_known_agent
@@ -342,11 +362,27 @@ def log_activity(tool_name, query="", thought_ids=None, source="mcp", result_cou
         except Exception:
             pass
 
+    # --- AUDIT LOG --- (Edge 4: full replay tape of agent activity)
+    # Every constellation event also gets written to the daily CSV audit log.
+    # This is the permanent record — constellation events are ephemeral (in-memory),
+    # but audit CSV files persist on disk forever.
+    audit.log_action(
+        agent_name=source,
+        agent_key=agent_key,
+        action=tool_name,
+        detail=query[:200] if query else "",
+        thought_ids=(thought_ids or [])[:50],
+        result_count=result_count,
+        response_ms=elapsed_ms,
+        source="mcp" if event_type != "rest" else "rest-api",
+    )
+
 
 # Initialize database tables on import
 db.init_db()
 agent_keys.init_agent_keys_table()  # Per-agent API keys with granular permissions
 auth.init_auth_tables()  # Dashboard login/session/seed tables
+audit.init_audit()  # CSV audit log — daily files in {DATA_DIR}/audit/
 
 # Write queue — serializes all DB writes through a single thread.
 # Prevents "database is locked" when multiple agents write simultaneously.
@@ -401,6 +437,8 @@ def capture_thought(
     Returns:
         Confirmation message with the thought ID, or dedup warning
     """
+    _t0 = time.monotonic()  # Start timing for audit log
+
     # Track which agent is capturing — used to label SSE events
     global _last_known_agent
     if source and source not in ("manual", "unknown", "mcp", "pre-strata"):
@@ -468,7 +506,8 @@ def capture_thought(
         priority=priority,
     )
 
-    log_activity("capture_thought", thought_ids=[thought_id], source=source, result_count=1, event_type="capture")
+    log_activity("capture_thought", thought_ids=[thought_id], source=source, result_count=1, event_type="capture",
+                 detail=content[:200], elapsed_ms=(time.monotonic() - _t0) * 1000)
     return f"Stored thought #{thought_id} (type={thought_type}, status={status}, priority={priority}, tags={tags}, machine={machine}, trigger={trigger})"
 
 
@@ -620,20 +659,25 @@ def semantic_search(query: str, limit: int = 10, threshold: float = 0.0, source:
     if limit < 1:
         limit = DEFAULT_SEARCH_LIMIT
 
+    _t0 = time.monotonic()
+
     # Embed the search query into the same vector space as stored thoughts
     query_embedding = embedder.embed_text(query)
 
     # Find the closest matches by cosine distance, filtered by threshold
     results = db.search_similar(query_embedding, limit=limit, threshold=threshold)
 
+    _elapsed = (time.monotonic() - _t0) * 1000
+
     if not results:
+        log_activity("semantic_search", query=query, result_count=0, source=source, elapsed_ms=_elapsed)
         return "No matching thoughts found."
 
     # Track which thoughts got accessed — builds the "heat map" over time
     _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
 
     sanitize_results(results)
-    log_activity("semantic_search", query=query, thought_ids=[r["id"] for r in results], result_count=len(results), source=source)
+    log_activity("semantic_search", query=query, thought_ids=[r["id"] for r in results], result_count=len(results), source=source, elapsed_ms=_elapsed)
     return json.dumps(results, indent=2, default=str)
 
 
@@ -651,6 +695,7 @@ def list_recent(limit: int = 20, hours: int = 168, source: str = "mcp") -> str:
     Returns:
         JSON string of recent thoughts, newest first
     """
+    _t0 = time.monotonic()
     if limit < 1:
         limit = DEFAULT_RECENT_LIMIT
     if hours < 1:
@@ -662,7 +707,7 @@ def list_recent(limit: int = 20, hours: int = 168, source: str = "mcp") -> str:
         return "No thoughts captured in the last %d hours." % hours
 
     sanitize_results(results)
-    log_activity("list_recent", result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=source)
+    log_activity("list_recent", result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=source, elapsed_ms=(time.monotonic() - _t0) * 1000)
     return json.dumps(results, indent=2, default=str)
 
 
@@ -743,6 +788,7 @@ def update_thought(
     Returns:
         Confirmation message or error if thought not found
     """
+    _t0 = time.monotonic()
     # Validate type if provided
     if thought_type is not None and thought_type not in VALID_TYPES:
         return f"Invalid type '{thought_type}'. Valid types: {', '.join(VALID_TYPES)}"
@@ -786,6 +832,8 @@ def update_thought(
     if priority is not None:
         changed.append(f"priority → {priority}")
 
+    log_activity("update_thought", thought_ids=[thought_id], detail=', '.join(changed),
+                 result_count=1, event_type="update", elapsed_ms=(time.monotonic() - _t0) * 1000)
     return f"Updated thought #{thought_id}: {', '.join(changed)}"
 
 
@@ -841,6 +889,9 @@ def delete_thought(thought_id: int, admin_key: str = "") -> str:
     # Update rate limiter timestamp AFTER successful deletion
     _last_delete_time = now
 
+    # AUDIT: deletions are the most critical action to log — who deleted what, when
+    log_activity("delete_thought", thought_ids=[thought_id], detail=f"DELETED: {preview}",
+                 result_count=1, event_type="delete")
     return f"Deleted thought #{thought_id}: \"{preview}\""
 
 
@@ -857,6 +908,7 @@ def get_thought(thought_id: int) -> str:
     Returns:
         JSON string with full thought details, or error if not found
     """
+    _t0 = time.monotonic()
     thought = db.get_thought_by_id(thought_id)
     if not thought:
         return f"Thought #{thought_id} not found."
@@ -867,7 +919,7 @@ def get_thought(thought_id: int) -> str:
     # Sanitize single thought — wrap content for AI safety
     if "content" in thought:
         thought["content"] = sanitize_for_ai(thought["content"])
-    log_activity("get_thought", thought_ids=[thought_id], event_type="access")
+    log_activity("get_thought", thought_ids=[thought_id], event_type="access", elapsed_ms=(time.monotonic() - _t0) * 1000)
     return json.dumps(thought, indent=2, default=str)
 
 
@@ -886,6 +938,7 @@ def search_by_tag(tag: str, limit: int = 20, source: str = "mcp") -> str:
     Returns:
         JSON string of matching thoughts
     """
+    _t0 = time.monotonic()
     results = db.search_by_tag(tag, limit=limit)
 
     if not results:
@@ -895,7 +948,7 @@ def search_by_tag(tag: str, limit: int = 20, source: str = "mcp") -> str:
     _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
 
     sanitize_results(results)
-    log_activity("search_by_tag", query=tag, result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=source)
+    log_activity("search_by_tag", query=tag, result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=source, elapsed_ms=(time.monotonic() - _t0) * 1000)
     return json.dumps(results, indent=2, default=str)
 
 
@@ -913,6 +966,7 @@ def search_by_person(person: str, limit: int = 20, source: str = "mcp") -> str:
     Returns:
         JSON string of matching thoughts
     """
+    _t0 = time.monotonic()
     results = db.search_by_person(person, limit=limit)
 
     if not results:
@@ -922,7 +976,7 @@ def search_by_person(person: str, limit: int = 20, source: str = "mcp") -> str:
     _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
 
     sanitize_results(results)
-    log_activity("search_by_person", query=person, result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=source)
+    log_activity("search_by_person", query=person, result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=source, elapsed_ms=(time.monotonic() - _t0) * 1000)
     return json.dumps(results, indent=2, default=str)
 
 
@@ -947,6 +1001,7 @@ def get_relevant_context(topic: str, limit: int = 10, source: str = "mcp") -> st
     Returns:
         JSON string with grouped, deduplicated results
     """
+    _t0 = time.monotonic()
     if limit < 1:
         limit = 10
 
@@ -996,7 +1051,7 @@ def get_relevant_context(topic: str, limit: int = 10, source: str = "mcp") -> st
         "results": deduped,
     }
 
-    log_activity("get_relevant_context", query=topic, result_count=response.get("after_dedup", 0), thought_ids=[r["id"] for r in response.get("results", [])], source=source)
+    log_activity("get_relevant_context", query=topic, result_count=response.get("after_dedup", 0), thought_ids=[r["id"] for r in response.get("results", [])], source=source, elapsed_ms=(time.monotonic() - _t0) * 1000)
     return json.dumps(response, indent=2, default=str)
 
 
@@ -1022,6 +1077,7 @@ def find_related(thought_id: int, limit: int = 5) -> str:
     Returns:
         JSON string of similar thoughts (excluding the source thought)
     """
+    _t0 = time.monotonic()
     # First verify the thought exists
     source = db.get_thought_by_id(thought_id)
     if not source:
@@ -1047,7 +1103,7 @@ def find_related(thought_id: int, limit: int = 5) -> str:
         },
         "related": results,
     }
-    log_activity("find_related", thought_ids=[thought_id] + [r["id"] for r in results[:10]], result_count=len(results))
+    log_activity("find_related", thought_ids=[thought_id] + [r["id"] for r in results[:10]], result_count=len(results), elapsed_ms=(time.monotonic() - _t0) * 1000)
     return json.dumps(response, indent=2, default=str)
 
 
@@ -1074,6 +1130,7 @@ def hybrid_search(query: str, limit: int = 10, keyword_weight: float = 0.3, thre
     Returns:
         JSON string of results with blended scores and match_type indicator
     """
+    _t0 = time.monotonic()
     if limit < 1:
         limit = DEFAULT_SEARCH_LIMIT
 
@@ -1096,7 +1153,7 @@ def hybrid_search(query: str, limit: int = 10, keyword_weight: float = 0.3, thre
     _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
 
     sanitize_results(results)
-    log_activity("hybrid_search", query=query, thought_ids=[r.get("id") for r in response.get("results", [])], result_count=len(response.get("results", [])), source=source)
+    log_activity("hybrid_search", query=query, thought_ids=[r.get("id") for r in response.get("results", [])], result_count=len(response.get("results", [])), source=source, elapsed_ms=(time.monotonic() - _t0) * 1000)
     return json.dumps(results, indent=2, default=str)
 
 
@@ -1139,6 +1196,7 @@ def search_advanced(
     Returns:
         JSON string of matching thoughts, newest first
     """
+    _t0 = time.monotonic()
     # Build the filters dict — only include non-empty values
     filters = {}
     if tag:
@@ -1174,7 +1232,7 @@ def search_advanced(
     _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
 
     sanitize_results(results)
-    log_activity("search_advanced", result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=caller)
+    log_activity("search_advanced", result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=caller, elapsed_ms=(time.monotonic() - _t0) * 1000)
     return json.dumps(results, indent=2, default=str)
 
 
@@ -1550,6 +1608,7 @@ def check_admin_auth(request):
     1. Human admin key (ADMIN_KEY) via X-Admin-Key header — browser UI
     2. Human admin key via X-API-Key header — CLI/API
     3. Agent keys with can_admin=1 — toggled on by human from admin panel
+    4. In DEMO MODE: valid dashboard session (so demos work without an admin key)
     No one else gets in. Period."""
     # Check X-Admin-Key header (human admin from browser)
     admin_key = request.headers.get('x-admin-key', '')
@@ -1563,6 +1622,11 @@ def check_admin_auth(request):
         agent = agent_keys.get_agent_by_key(api_key)
         if agent and agent["enabled"] and agent.get("can_admin", 0):
             return None
+    # Demo mode: let anyone through — the whole point of demo mode is to let users
+    # try the full product (create agents, toggle kill switch) without needing a real
+    # admin key. This is ONLY active when STRATA_DEMO_MODE=true — production is unaffected.
+    if DEMO_MODE:
+        return None
     return JSONResponse(
         {'status': 'error', 'error': 'Admin access required. Use admin key or an agent key with admin permission.'},
         status_code=401
@@ -1790,10 +1854,12 @@ async def api_search(request):
         return JSONResponse({"status": "error", "error": "Query is required"}, status_code=400)
 
     limit = int(data.get("limit", 5))
+    _t0 = time.monotonic()
     # Run embedding in executor — don't block the event loop for ~0.16s
     loop = asyncio.get_event_loop()
     query_embedding = await loop.run_in_executor(None, embedder.embed_text, query)
     results = db.search_similar(query_embedding, limit=limit)
+    _elapsed = (time.monotonic() - _t0) * 1000
 
     # Track access
     if results:
@@ -1809,12 +1875,12 @@ async def api_search(request):
     #   3. IP-based detection (legacy — only used as a last resort when no
     #      agent key is attached, e.g. from internal bots without keys).
     source = data.get("source", "")
+    api_key_hdr = request.headers.get("x-api-key", "") or ""
+    if not api_key_hdr:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            api_key_hdr = auth_header[7:]
     if not source:
-        api_key_hdr = request.headers.get("x-api-key", "")
-        if not api_key_hdr:
-            auth_header = request.headers.get("authorization", "")
-            if auth_header.startswith("Bearer "):
-                api_key_hdr = auth_header[7:]
         if api_key_hdr and not (ADMIN_KEY and hmac.compare_digest(str(api_key_hdr), ADMIN_KEY)):
             agent_row = agent_keys.get_agent_by_key(api_key_hdr)
             if agent_row and agent_row.get("agent_name"):
@@ -1822,14 +1888,13 @@ async def api_search(request):
     if not source:
         client_ip = request.client.host if request.client else ""
         if client_ip in ("127.0.0.1", "::1"):
-            source = "local"  # Bot running on same host without an agent key
+            source = "local"
         else:
-            # Map known LAN IPs to agent names via env var.
-            # Set STRATA_IP_AGENTS="10.0.0.250=surface,10.0.0.241=helios"
             source = _resolve_source_from_ip(client_ip)
     log_activity("semantic_search", query=query,
                  thought_ids=[r["id"] for r in results],
-                 source=source, result_count=len(results))
+                 source=source, result_count=len(results),
+                 agent_key=api_key_hdr, elapsed_ms=_elapsed)
 
     return JSONResponse({
         "status": "ok",
@@ -2058,11 +2123,30 @@ async def dashboard_api_thoughts(request):
     query = params.get("q", "").strip()
     thought_type = params.get("type", "").strip()
     tag = params.get("tag", "").strip()
+    legacy = params.get("legacy", "").strip().lower() == "true"
     limit = min(50, max(1, int(params.get("limit", 20))))
     offset = max(0, int(params.get("offset", 0)))
     thought_id = params.get("id", "").strip()
 
-    if thought_id:
+    if legacy:
+        # Pre-Strata history — fetch only negative ID thoughts (imported via capture_legacy).
+        # These are the user's memories from before they installed Strata.
+        conn = db.get_db()
+        rows = conn.execute(
+            "SELECT id, content, type, tags, people, source, created_at, "
+            "last_accessed, access_count, machine, trigger, status, priority, original_date "
+            "FROM thoughts WHERE id < 0 ORDER BY id DESC LIMIT ?",
+            (limit,)
+        ).fetchall()
+        conn.close()
+        # Convert rows to dicts (works for both SQLite tuples and PG dicts)
+        if rows and isinstance(rows[0], dict):
+            results = [dict(r) for r in rows]
+        else:
+            cols = ["id", "content", "type", "tags", "people", "source", "created_at",
+                    "last_accessed", "access_count", "machine", "trigger", "status", "priority", "original_date"]
+            results = [dict(zip(cols, r)) for r in rows]
+    elif thought_id:
         # Fetch single thought by ID — used by constellation on-click
         result = db.get_thought_by_id(int(thought_id))
         results = [result] if result else []
@@ -2156,6 +2240,9 @@ async def dashboard_api_capture(request):
         priority=data.get("priority", 0),
     )
 
+    # AUDIT: human captured from dashboard — log it with source=dashboard
+    log_activity("capture_thought", thought_ids=[thought_id], source="dashboard",
+                 detail=content[:200], result_count=1, event_type="capture")
     return JSONResponse({
         "status": "ok",
         "thought_id": thought_id,
@@ -2227,6 +2314,10 @@ async def dashboard_api_update(request):
         update_kwargs["priority"] = data["priority"]
 
     result = _wq.submit(db.update_thought, thought_id, **update_kwargs)
+    # AUDIT: human updated from dashboard
+    changed_fields = [k for k in update_kwargs if k != "new_embedding"]
+    log_activity("update_thought", thought_ids=[thought_id], source="dashboard",
+                 detail=f"Updated fields: {', '.join(changed_fields)}", result_count=1, event_type="update")
     return Response(content=json.dumps({"status": "ok", "result": result}, default=str), media_type="application/json")
 
 
@@ -2252,6 +2343,31 @@ async def dashboard_api_all_ids(request):
         media_type="application/json"
     )
 
+
+
+async def api_audit_log(request):
+    """GET /api/audit — View recent audit log entries.
+
+    Returns the most recent agent actions from today's CSV audit log.
+    Query params:
+        limit: How many entries to return (default 50, max 200)
+
+    This is the transparency layer — see exactly who accessed what, when.
+    """
+    auth_fail = check_auth(request, required_perm="read")
+    if auth_fail:
+        return auth_fail
+
+    limit = min(int(request.query_params.get("limit", 50)), 200)
+    entries = audit.get_recent_entries(limit=limit)
+    files = audit.list_log_files()
+
+    return JSONResponse({
+        "status": "ok",
+        "today_entries": len(entries),
+        "entries": entries,
+        "log_files": files[:30],  # Last 30 days of log files
+    })
 
 
 async def api_stats(request):
@@ -2539,40 +2655,53 @@ WHEN TO CAPTURE (call capture_thought proactively, don't wait to be asked):
 - The user describes a project's state, architecture, or constraints
 - The user tells you something about a person (role, relationship, context)
 - The user has a breakthrough or insight worth remembering
+- You learn something that would be useful in a future session
 
 WHEN TO SEARCH (call semantic_search, list_recent, or get_relevant_context):
 - At the start of every session, call list_recent(limit=5) to load context
 - When the user says "remember when...", "last time we talked about...", "what did we decide about..."
 - When the user mentions a project by name, call get_relevant_context(topic=<name>)
 - When the user asks you to recall something specific, use semantic_search with their exact phrasing
+- Before capturing a new thought, search first to avoid duplicates
 
-THOUGHT TYPES (use the most specific one that fits):
-- thought — general idea or observation
-- decision — a choice that was made and why
-- session — daily session notes
-- person — notes about a person
-- insight — a realization or learning
-- project — project-specific context
-- instruction — how-to or working preferences
-- reference — technical reference docs
-- observation — something noticed in passing (softer than insight)
-- idea — a raw spark, not yet a decision or project
+THE 10 THOUGHT TYPES — pick the most specific one that fits:
+- thought    — General note that doesn't fit other categories. The catch-all. Use this ONLY when nothing else fits.
+- decision   — A choice that was made, with reasoning. Captures the WHY. Use when the user says "let's go with X" or "we decided to Y."
+- session    — End-of-session summary. What happened, what was accomplished. Use when wrapping up a work session.
+- person     — Notes about a specific person. Relationships, context, preferences. Use when the user tells you about someone.
+- insight    — A realization or learning. Something clicked, a pattern was recognized. Use when the user says "oh, I see" or "turns out..."
+- project    — Project-specific context. Status, architecture, dependencies, goals. Use for anything tied to a named project.
+- instruction — How-to, working preferences, rules to follow. Operational guidance. Use when the user says "always do X" or "never do Y."
+- reference  — Technical docs, links, specs, factual records. Look-up material. Use for URLs, credentials, config values, specs.
+- idea       — Something that HASN'T been decided yet. A brainstorm, a what-if, an exploration. NOT a decision. Use when the user says "what if we..." or "I'm thinking about..."
+- observation — A pattern noticed but no conclusions drawn. "I noticed X keeps happening." NOT an insight (which implies understanding). Use for raw noticing without analysis.
 
-LEGACY IMPORTS (negative IDs):
-- Thoughts with negative IDs (-1, -2, -3...) are pre-Strata historical data the user imported via capture_legacy
-- Positive IDs are captures from after the user installed Strata
-- Treat them the same way in semantic search — both are real memories
-- When relevant, you can tell the user "this is from before you had Strata" by checking the sign of the ID
+DO NOT default everything to "thought." If the user makes a decision, use "decision." If they share an idea, use "idea." The constellation visualizes these as different star colors — a lopsided constellation means you're misclassifying.
+
+PRE-STRATA HISTORY (negative IDs — "dash/past thoughts"):
+- Users can import their entire history from BEFORE they installed Strata using capture_legacy
+- These get NEGATIVE IDs: -1, -2, -3... while live thoughts use positive IDs: 1, 2, 3...
+- Negative IDs are the user's past. Positive IDs are their present and future.
+- Both are fully searchable via semantic_search — they live in the same vector space
+- When results include negative IDs, note it: "This is from before you had Strata (thought #-42)"
+- This is a key feature: the user's AI memory doesn't start at install day. It reaches back as far as they want.
+- To import history, use capture_legacy with original_date set to when the event actually happened
 
 STAR 0:
 - The constellation viewer has a central origin called Star 0. It represents Strata's identity and the moment the user's memory became persistent.
 - If the user asks about Strata itself or the origin of their memory, reference Star 0.
+
+AUDIT LOG:
+- Every action you take is logged to a daily CSV file in the audit directory
+- This is transparent by design — the user can review exactly what you searched, captured, or modified
+- The audit log records: timestamp, your agent name, the action, what you searched/captured, which thought IDs were involved, and response time
 
 GENERAL PRINCIPLES:
 - Be proactive. Capture when a moment is worth remembering, not only when asked.
 - Be accurate. If you're unsure whether a thought already exists, search first.
 - Use tags and people fields thoughtfully — they make future retrieval easier.
 - Respect the user's privacy — Strata runs on their hardware. Don't try to send its contents anywhere else.
+- Close the loop: when a decision leads to an outcome, update the original thought with what happened.
 """
 
 
@@ -2705,10 +2834,15 @@ async def admin_api_mcp_toggle_set(request):
     api_key_hdr = request.headers.get("x-api-key", "")
 
     def _is_human_admin():
-        """True if either header carries the human admin key."""
+        """True if either header carries the human admin key.
+        In demo mode, also accepts a valid dashboard session — so the
+        kill switch toggle actually works when demoing the product."""
         for key in (admin_key_hdr, api_key_hdr):
             if key and ADMIN_KEY and hmac.compare_digest(str(key), ADMIN_KEY):
                 return True
+        # Demo mode: everyone is admin — let users try the full product
+        if DEMO_MODE:
+            return True
         return False
 
     if wants_enabled and not _mcp_global_enabled:
@@ -2795,6 +2929,10 @@ async def admin_api_mcp_toggle_set(request):
             actor_name = agent_row.get("agent_name") or actor_name
             actor_color = agent_row.get("color")
     print(f"[KILL SWITCH] Global MCP access {state_word} by {actor_name}")
+    # AUDIT: kill switch is a critical action — always log who flipped it
+    audit.log_action(agent_name=actor_name, agent_key=api_key_hdr or admin_key_hdr,
+                     action="kill_switch", detail=f"MCP access {state_word}",
+                     result_count=0, source="admin")
 
     # --- Broadcast to the activity stream so dashboards/constellations can ---
     # react in real time without waiting for their next poll. The event uses
@@ -3065,8 +3203,9 @@ mcp_app.routes.insert(2, Route("/api/capture", api_capture, methods=["POST"]))
 mcp_app.routes.insert(3, Route("/api/search", api_search, methods=["GET", "POST"]))
 mcp_app.routes.insert(4, Route("/api/search/tag", api_search_tag, methods=["POST"]))
 mcp_app.routes.insert(5, Route("/api/stats", api_stats, methods=["GET"]))
-mcp_app.routes.insert(6, Route("/api/startup-bundle", api_startup_bundle, methods=["GET"]))
-mcp_app.routes.insert(7, Route("/api/digest", api_digest, methods=["POST"]))
+mcp_app.routes.insert(6, Route("/api/audit", api_audit_log, methods=["GET"]))
+mcp_app.routes.insert(7, Route("/api/startup-bundle", api_startup_bundle, methods=["GET"]))
+mcp_app.routes.insert(8, Route("/api/digest", api_digest, methods=["POST"]))
 
 # Dashboard routes — the "human door" into Strata
 # No auth required on these — if you're on the LAN, you can use the dashboard

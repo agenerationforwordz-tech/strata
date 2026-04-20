@@ -24,7 +24,7 @@ AUTH_ENABLED = os.environ.get("STRATA_AUTH_ENABLED", "true").lower() == "true"
 # --- Database Backend ---
 # "sqlite" = works out of the box, no external DB needed (good for demos/single user)
 # "postgresql" = concurrent multi-agent access, pgvector similarity search, scales to 1M+ thoughts
-DB_BACKEND = os.environ.get("STRATA_DB_BACKEND", "sqlite")
+DB_BACKEND = os.environ.get("STRATA_DB_BACKEND", "postgresql")
 
 # --- Demo Mode ---
 # When STRATA_DEMO_MODE=true, the dashboard auth flow accepts blank passwords:

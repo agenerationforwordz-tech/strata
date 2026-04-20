@@ -1462,7 +1462,7 @@
 <!-- TOP BAR -->
 <div class="topbar">
   <div class="logo">
-    STRATA <span>v2.0</span>
+    STRATA <span>v2.2</span>
   </div>
   <div class="status">
     <span class="status-dot offline" id="status-dot"></span>
@@ -1470,7 +1470,7 @@
     &nbsp;|&nbsp;
     <span id="status-device"></span>
     &nbsp;|&nbsp;
-    <span id="status-memories">0 memories</span>
+    <span id="status-memories" style="cursor:pointer;" onclick="toggleLegacyView()" title="Click to view Pre-Strata history (negative ID thoughts)">0 memories</span>
     &nbsp;|&nbsp;
     bge-base-en-v1.5
     &nbsp;|&nbsp;
@@ -1509,7 +1509,7 @@
 
   <!-- STAT CARDS -->
   <div class="stats-grid">
-    <div class="stat-card">
+    <div class="stat-card" onclick="toggleLegacyView()" style="cursor:pointer;" title="Click to view Pre-Strata history">
       <div class="stat-label">Total Memories</div>
       <div class="stat-value" id="stat-total"> -</div>
       <div class="stat-sub" id="stat-total-sub">&nbsp;</div>
@@ -1602,7 +1602,7 @@
   </div>
 
   <div class="footer">
-    STRATA v2.0 &mdash; Self-Hosted AI Memory &mdash;
+    STRATA v2.2 &mdash; Self-Hosted AI Memory &mdash;
     <a href="https://github.com/agenerationforwordz-tech/strata">GitHub</a> &mdash;
     Built with care &mdash;
     Every memory is permanent
@@ -1991,6 +1991,50 @@
       document.getElementById('feed-count').textContent = res.length + ' tagged';
       document.getElementById('load-count').textContent = '';
     } catch(e) { document.getElementById('feed-count').textContent = 'Search failed'; }
+  }
+
+  // --- PRE-STRATA HISTORY (dash/past thoughts) ---
+  // Toggles the feed to show negative ID thoughts (imported history from before Strata).
+  // Clicking "X memories" in the topbar or using the history filter activates this.
+  var LEGACY_VIEW = false;
+  async function toggleLegacyView() {
+    LEGACY_VIEW = !LEGACY_VIEW;
+    var sc = document.getElementById('thought-scroll');
+    var memSpan = document.getElementById('status-memories');
+
+    if (LEGACY_VIEW) {
+      // Switch to legacy view — show only negative ID thoughts
+      FEED_MODE = 'legacy'; FEED_DONE = true;
+      document.getElementById('feed-title').textContent = 'Pre-Strata History';
+      document.getElementById('feed-count').textContent = 'Loading...';
+      memSpan.style.color = '#d4a054';
+      memSpan.title = 'Viewing Pre-Strata history — click to return';
+      // Clear current feed
+      sc.querySelectorAll('.thought-item,.empty-state,.tag-match-banner').forEach(function(e){e.remove()});
+      try {
+        // Fetch thoughts with negative IDs via the dashboard API
+        var data = await api('/dashboard/api/thoughts?legacy=true&limit=50');
+        var res = data.results || [];
+        if (!res.length) {
+          sc.insertAdjacentHTML('afterbegin',
+            '<div class="empty-state" style="padding:40px;text-align:center;color:#607080">' +
+            '<div style="font-size:32px;margin-bottom:12px">&#x1f570;</div>' +
+            '<h3 style="color:#8090a0;margin:0 0 8px">No Pre-Strata History</h3>' +
+            '<p>Use <code>capture_legacy</code> to import thoughts from before you installed Strata.<br>' +
+            'They get negative IDs (-1, -2, -3...) and live alongside your current memories.</p></div>');
+          document.getElementById('feed-count').textContent = '0 legacy thoughts';
+          return;
+        }
+        var h = ''; res.forEach(function(r){ h += renderThoughtItem(r); });
+        document.getElementById('load-more').insertAdjacentHTML('beforebegin', h);
+        document.getElementById('feed-count').textContent = res.length + ' legacy thoughts';
+      } catch(e) { document.getElementById('feed-count').textContent = 'Failed to load'; }
+    } else {
+      // Return to normal view
+      memSpan.style.color = '';
+      memSpan.title = 'Click to view Pre-Strata history (negative ID thoughts)';
+      loadDashboard();
+    }
   }
 
   async function doSearch() {

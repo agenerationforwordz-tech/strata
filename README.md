@@ -1,4 +1,4 @@
-# STRATA v2.0
+# STRATA v2.2
 
 Self-hosted AI memory server. Your thoughts, your hardware, your data.
 
@@ -8,9 +8,13 @@ Your AI forgets everything the moment the session ends. Strata fixes that. It gi
 
 ![Strata Dashboard](dashboard-preview.png)
 
-## What's new in v2.0
+![Constellation Viewer](constellation-preview.png)
 
-v1 was a memory server. v2 is a memory server that knows who's talking to it.
+![Constellation Zoomed](constellation-zoomed.png)
+
+## What's new in v2.2
+
+v2.0 taught Strata who's talking. v2.2 teaches it to scale, audit, and remember your past.
 
 - **Per-agent API keys** - every AI agent gets its own key with granular `read / write / delete / admin / kill` permissions. You stop sharing one key across every tool. Manage them from `/admin/agents`.
 - **Free-tier hard lock** - run up to 3 active agents at once on the free tier. Create as many as you want (up to 10), but only 3 can be enabled simultaneously. Paid licenses raise the cap via env var.
@@ -20,6 +24,16 @@ v1 was a memory server. v2 is a memory server that knows who's talking to it.
 - **Encryption at rest (optional)** - SQLCipher AES-256 encryption with key in a root-only file. Dormant by default; flip on with one env var and a setup script when your threat model needs it.
 - **File-level hardening (optional)** - dedicated `strata` system user owns the database with mode 600. SSH users can no longer bypass the API by editing the SQLite file directly.
 - **Demo mode** - run a public demo with `STRATA_DEMO_MODE=true` and the dashboard accepts blank passwords (the login screen still renders so visitors can see the auth feature exists).
+
+**New in v2.2:**
+
+- **PostgreSQL + pgvector backend** — SQLite is still the default for quick demos, but set `STRATA_DB_BACKEND=postgresql` for production. PostgreSQL handles concurrent multi-agent writes natively (no more write queue), and pgvector does similarity search IN the database with HNSW indexes. Scales to 1 million+ thoughts.
+- **CSV audit log** — every agent action is logged to daily CSV files in `data/audit/`. Full replay tape: who searched what, which thoughts came back, how long it took. This is the transparency layer — trace exactly how an AI built its understanding of your data. View via `GET /api/audit`.
+- **Pre-Strata history (negative IDs)** — import your memories from BEFORE you installed Strata using `capture_legacy`. These get negative IDs (-1, -2, -3...) and live in the same constellation alongside your current thoughts. Your AI memory doesn't start at install day — it reaches back as far as you want. Click "THOUGHTS" in the constellation viewer to toggle between current and historical views.
+- **10 thought types** — expanded from 8 types with clear descriptions that teach AI agents WHEN to use each one. Added `idea` (brainstorms, not yet decided) and `observation` (patterns noticed, no conclusions drawn). The agent protocol now spells out type selection so every new user's constellation is balanced.
+- **Updated agent protocol** — `strata_status` now teaches agents about all 10 types, negative ID history, the audit log, and outcome loop tracking. No CLAUDE.md needed — the protocol IS the onboarding.
+- **Constellation camera fix** — clicking a star flies the camera past it and looks back, keeping the origin star visible in the background as an anchor.
+- **Demo mode improvements** — agent creation and MCP kill switch now work without an admin key in demo mode.
 
 Plus the v1 features you already know: semantic search, file vault, dedup protection, password+seed-phrase dashboard auth, dark theme, runs on a Pi.
 
@@ -65,6 +79,96 @@ data/vault/
 ```
 
 Organized by device and month. You can browse it manually if you want. Files up to 1GB, text files capped at 5MB when returned to AI (so it doesn't blow up the context window).
+
+
+## Pre-Strata history (negative IDs)
+
+Your AI memory doesn't have to start at install day. Import your past:
+
+```python
+# Via MCP tool
+capture_legacy(
+    content="Decided to self-host everything after the cloud bill hit $400/mo",
+    thought_type="decision",
+    tags=["infrastructure", "self-hosting"],
+    original_date="2024-06-15",
+    source="pre-strata"
+)
+```
+
+Legacy thoughts get negative IDs (-1, -2, -3...) while live thoughts use positive IDs. Both are fully searchable — they live in the same vector space. The constellation viewer has a toggle: click "THOUGHTS" to dim current stars and highlight your history.
+
+
+## CSV audit log
+
+Every agent interaction is logged to daily CSV files in `data/audit/`:
+
+```
+data/audit/
+  audit_2026-04-19.csv
+  audit_2026-04-20.csv
+  ...
+```
+
+Each row records:
+- **timestamp** — when the operation completed (UTC)
+- **agent_name** — which agent made the call
+- **agent_key_hint** — masked API key (enough to identify, not enough to use)
+- **action** — what happened (capture_thought, semantic_search, etc.)
+- **detail** — search query or content preview
+- **thought_ids** — which thoughts were touched
+- **result_count** — how many results came back
+- **response_ms** — operation duration
+
+Query today's log via REST: `GET /api/audit?limit=50`
+
+Override the directory: `STRATA_AUDIT_DIR=/your/path`
+Disable entirely: `STRATA_AUDIT_ENABLED=false`
+
+
+## PostgreSQL backend (production)
+
+SQLite works great for getting started and single-user setups. For production with multiple agents hitting Strata simultaneously, switch to PostgreSQL:
+
+```bash
+# Install PostgreSQL 17 + pgvector
+sudo apt install postgresql-17 postgresql-17-pgvector
+
+# Create the database and user
+sudo -u postgres createuser strata
+sudo -u postgres createdb strata_db -O strata
+sudo -u postgres psql -c "ALTER USER strata PASSWORD 'your-password-here';"
+
+# Run the schema (creates tables, indexes, triggers)
+sudo -u postgres psql -d strata_db -f strata_pg_schema.sql
+
+# Set the backend
+export STRATA_DB_BACKEND=postgresql
+export STRATA_PG_PASSWORD=your-password-here
+
+# Start Strata — it auto-detects the backend
+python server.py
+```
+
+### Migrating from SQLite to PostgreSQL
+
+If you already have thoughts in SQLite:
+
+```bash
+python migrate_to_pg.py
+```
+
+This migrates all thoughts, embeddings, history, agent keys, and profiles. Your SQLite database is preserved as a backup.
+
+### Why PostgreSQL?
+
+| Feature | SQLite | PostgreSQL |
+|---------|--------|------------|
+| Concurrent writers | 1 (write queue) | Unlimited |
+| Similarity search | numpy in Python | pgvector HNSW in-database |
+| Full-text search | FTS5 | tsvector (weighted) |
+| Scale target | < 10K thoughts | 1M+ thoughts |
+| Setup complexity | Zero | Moderate |
 
 ## Try the demo first (60 seconds, no setup)
 

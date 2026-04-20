@@ -348,7 +348,7 @@ body.wallpaper #flower-slider:hover { opacity: 0.7 !important; }
 <div id="constellation-pane">
     <canvas id="flower-canvas"></canvas>
     <div id="overlay-stats">
-        <div><span class="label">THOUGHTS </span><span class="value" id="stat-total">—</span></div>
+        <div><span class="label" style="cursor:pointer; pointer-events:auto; transition: color 0.3s, text-shadow 0.3s;" onclick="toggleLegacyStars()" onmouseenter="this.style.color='#00e5ff';this.style.textShadow='0 0 12px #00e5ff66'" onmouseleave="this.style.color='';this.style.textShadow=''" title="Click to view Pre-Strata history">THOUGHTS </span><span class="value" id="stat-total">—</span></div>
         <div><span class="label">LOADED </span><span class="value" id="stat-loaded">—</span></div>
         <div><span class="label">QUERY </span><span class="value" id="stat-query">idle</span></div>
         <div><span class="label">RESULTS </span><span class="value" id="stat-results">—</span></div>
@@ -571,6 +571,35 @@ let thoughts = [], thoughtMap = {}, starObjects = [], starMap = {};
 let matchedIds = new Set(), labelElements = [];
 let isSearching = false, lastThoughtCount = 0, currentView = 'results';
 let eventSource = null, streamEventCount = 0;
+let legacyMode = false; // When true, positive stars dim and negative stars glow
+
+// Toggle pre-Strata history view — dims current thoughts, highlights legacy ones.
+// Called when clicking the THOUGHTS label in the top-left overlay.
+// Uses targetOpacity so the animation loop respects it (direct opacity gets overridden).
+function toggleLegacyStars() {
+    legacyMode = !legacyMode;
+    const countEl = document.getElementById('stat-total');
+
+    for (const sprite of starObjects) {
+        const id = sprite.userData.thoughtId;
+        if (id === undefined || id === null) continue;
+
+        if (legacyMode) {
+            // Legacy mode: negative IDs glow full, positive IDs fade to near-invisible
+            if (id < 0) {
+                sprite.userData.targetOpacity = 1.0;
+                sprite.userData.targetScale = sprite.userData.originalScale * 1.5;
+            } else {
+                sprite.userData.targetOpacity = 0.04;
+            }
+        } else {
+            // Normal mode: restore everything
+            sprite.userData.targetOpacity = sprite.userData.originalOpacity;
+            sprite.userData.targetScale = sprite.userData.originalScale;
+        }
+    }
+    countEl.style.color = legacyMode ? '#d4a054' : '';
+}
 
 // Agent visualization state
 let activeAgentVisuals = [];  // Array of active agent spawn-in visualizations
@@ -657,11 +686,15 @@ function startZoomToStar(starWorldPos) {
     zoomFromCam = camera.position.clone();
     zoomFromTgt = controls.target.clone();
 
-    // Camera destination: 12 units from the star, along the origin→star line
-    // Keeps the star centered with the constellation visible behind
+    // Camera destination: go PAST the clicked star (further from origin),
+    // then look back at the star. This puts the star centered in view with
+    // the origin star visible in the background behind it — always anchored.
     const dirFromOrigin = starWorldPos.clone().normalize();
-    zoomToCam = starWorldPos.clone().sub(dirFromOrigin.clone().multiplyScalar(12));
-    zoomToCam.y += 2; // slight upward offset for cinematic angle
+    const starDist = starWorldPos.length();
+    // Camera goes 15 units past the star along the origin→star line
+    zoomToCam = dirFromOrigin.clone().multiplyScalar(starDist + 15);
+    zoomToCam.y += 3; // slight upward offset so star doesn't perfectly block origin
+    // Look AT the clicked star — it's the focus, origin is the backdrop
     zoomToTgt = starWorldPos.clone();
 
     // Stop auto-spin but keep manual orbit — user should still be able to look around
