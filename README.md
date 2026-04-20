@@ -17,7 +17,6 @@ Your AI forgets everything the moment the session ends. Strata fixes that. It gi
 v2.0 taught Strata who's talking. v2.2 teaches it to scale, audit, and remember your past.
 
 - **Per-agent API keys** - every AI agent gets its own key with granular `read / write / delete / admin / kill` permissions. You stop sharing one key across every tool. Manage them from `/admin/agents`.
-- **Free-tier hard lock** - run up to 3 active agents at once on the free tier. Create as many as you want (up to 10), but only 3 can be enabled simultaneously. Paid licenses raise the cap via env var.
 - **Global MCP kill switch** - one toggle that locks every agent out of MCP, REST, and `/api/*`. Any agent with write or kill permission can pull the brake; only a human admin can flip it back on. Built for the moment a tool goes rogue.
 - **3D Constellation viewer** - watch your brain think in real time at `/constellation`. Sacred-geometry layout (Flower of Life background, dodecahedron clusters, Fibonacci sphere distribution), per-agent colors, live activity stream, and a kill-switch indicator that desaturates the whole scene when MCP is offline.
 - **Per-agent identity colors** - each agent gets a color from a curated palette, editable from the admin panel. Colors flow through the constellation viewer so you can tell at a glance which agent is doing what.
