@@ -38,3 +38,6 @@ extensions.py
 # Backups and exports
 *.bak*
 *.csv
+*.bak.*
+*_backup.py
+*_sqlite_backup.py

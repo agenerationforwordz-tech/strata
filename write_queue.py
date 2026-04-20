@@ -1,44 +1,52 @@
-# STRATA — Write Queue
-# Serializes all SQLite writes through a single dedicated thread.
-# Prevents "database is locked" errors when multiple agents (Surface,
-# Mini, Helios, Telegram, Codex) write simultaneously.
+# STRATA — Write Queue (SQLite concurrency workaround)
+# SQLite only allows one writer at a time. This queue serializes write operations
+# so multiple agents don't step on each other.
 #
-# HOW IT WORKS:
-# - All DB writes go through WriteQueue.submit() or submit_fire_and_forget()
-# - A single daemon thread pulls jobs off a FIFO queue and executes them one at a time
-# - Callers block until their write completes (submit) or return immediately (fire_and_forget)
-# - Reads bypass the queue entirely — SQLite WAL mode handles concurrent readers
-#
-# WHY threading.Queue and not asyncio.Queue:
-# MCP tools are synchronous functions (FastMCP requirement). They can't await.
-# threading.Queue works from both sync and async contexts.
+# NOTE: When using PostgreSQL backend (STRATA_DB_BACKEND=postgresql), the WriteQueue
+# becomes a pass-through — submit() calls the function directly instead of queuing.
+# PostgreSQL handles concurrency natively, so no serialization is needed.
 
+import logging
+import os
 import queue
 import threading
 import time
-import logging
 
 logger = logging.getLogger("strata.write_queue")
+
+_PG_MODE = os.environ.get("STRATA_DB_BACKEND", "sqlite").lower() == "postgresql"
 
 
 class WriteQueue:
     """Single-writer queue for SQLite. Guarantees one DB write at a time.
-    
+
+    When STRATA_DB_BACKEND=postgresql, all methods become direct pass-through
+    calls — no queue, no thread, no overhead. PostgreSQL handles concurrency.
+
     Usage:
         wq = WriteQueue()
-        
+
         # Blocking — waits for result (use for capture_thought, update_thought, etc.)
         thought_id = wq.submit(db.store_thought, content="...", embedding=emb, ...)
-        
+
         # Fire-and-forget — returns immediately (use for record_access)
         wq.submit_fire_and_forget(db.record_access, [1, 2, 3])
     """
 
     def __init__(self, timeout=60):
+        self._timeout = timeout
+
+        if _PG_MODE:
+            # PostgreSQL mode — no queue needed, just pass through
+            logger.info("Write queue: PASS-THROUGH mode (PostgreSQL handles concurrency)")
+            self._total_processed = 0
+            self._total_errors = 0
+            return
+
+        # SQLite mode — start the single-writer queue
         # FIFO queue — no size limit. Writes arrive way slower than they process
         # (embedding takes 2-3s, SQLite write takes <50ms), so this won't grow unbounded.
         self._queue = queue.Queue()
-        self._timeout = timeout
 
         # Stats for monitoring via /health endpoint
         self._total_processed = 0
@@ -55,16 +63,20 @@ class WriteQueue:
 
     def submit(self, fn, *args, **kwargs):
         """Submit a write job and block until it completes.
-        
+
         Used by capture_thought, update_thought, delete_thought, etc.
         that need to return a result to the caller.
-        
-        The calling thread (from Starlette's thread pool) blocks here.
-        The writer thread executes fn(*args, **kwargs) and signals completion.
-        
+
+        In PostgreSQL mode, calls fn() directly — no queue overhead.
+
         Returns whatever fn() returns.
         Raises whatever fn() raises.
         """
+        if _PG_MODE:
+            # Direct call — PostgreSQL handles concurrency
+            self._total_processed += 1
+            return fn(*args, **kwargs)
+
         result_holder = {}  # Mutable dict to pass result back between threads
         done_event = threading.Event()  # Writer thread sets this when done
         enqueue_time = time.monotonic()
@@ -87,18 +99,28 @@ class WriteQueue:
 
     def submit_fire_and_forget(self, fn, *args, **kwargs):
         """Submit a write job without waiting for completion.
-        
+
         Used by record_access — the read tool returns search results
         immediately while access tracking happens in the background.
-        No result, no error propagation. If it fails, it's logged and skipped.
+        No result, no error propagation.
+
+        In PostgreSQL mode, calls fn() directly.
         """
+        if _PG_MODE:
+            try:
+                fn(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Fire-and-forget failed [{fn.__name__}]: {e}")
+            return
+
         self._queue.put((fn, args, kwargs, None, {}, time.monotonic()))
 
     def _writer_loop(self):
         """The single-threaded writer. Pulls jobs off the queue and executes
         them one at a time. This is the ONLY thread that writes to SQLite.
-        
+
         Runs forever until the process exits (daemon thread).
+        Not started in PostgreSQL mode.
         """
         while True:
             try:
@@ -107,8 +129,7 @@ class WriteQueue:
                 continue
 
             if job is None:
-                # Poison pill — clean shutdown (not used in production,
-                # but useful for testing)
+                # Poison pill — clean shutdown
                 break
 
             fn, args, kwargs, done_event, result_holder, enqueue_time = job
@@ -129,28 +150,26 @@ class WriteQueue:
                 if done_event is not None:
                     # Blocking caller — they need to know about the error
                     result_holder["error"] = e
-                # Log either way so it shows up in journalctl
                 logger.error(f"Write failed [{fn.__name__}]: {e}")
             finally:
-                # Signal the waiting caller (if any) that we're done
                 if done_event is not None:
                     done_event.set()
                 self._queue.task_done()
 
     @property
     def stats(self):
-        """Queue health stats for the /health endpoint.
-        
-        Returns dict with:
-        - queue_depth: how many writes are waiting right now
-        - total_processed: lifetime count of completed writes
-        - total_errors: lifetime count of failed writes
-        - avg_wait_ms: average time a write waited in queue before execution
-        - max_wait_ms: longest queue wait ever seen
-        """
+        """Queue health stats for the /health endpoint."""
+        if _PG_MODE:
+            return {
+                "mode": "pass-through (PostgreSQL)",
+                "total_processed": self._total_processed,
+                "total_errors": self._total_errors,
+            }
+
         with self._lock:
             avg = (self._total_wait_ms / self._total_processed) if self._total_processed > 0 else 0
             return {
+                "mode": "queued (SQLite)",
                 "queue_depth": self._queue.qsize(),
                 "total_processed": self._total_processed,
                 "total_errors": self._total_errors,
@@ -160,6 +179,8 @@ class WriteQueue:
 
     def shutdown(self):
         """Clean shutdown — drain the queue and stop the writer thread.
-        Not strictly needed (daemon thread dies with process) but good for testing."""
+        No-op in PostgreSQL mode."""
+        if _PG_MODE:
+            return
         self._queue.put(None)  # Poison pill
         self._thread.join(timeout=10)

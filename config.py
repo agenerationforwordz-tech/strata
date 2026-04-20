@@ -21,6 +21,11 @@ API_KEY = os.environ.get("STRATA_API_KEY", "change-me-before-deploy")
 # Set to False to disable auth entirely (NOT recommended for shared networks)
 AUTH_ENABLED = os.environ.get("STRATA_AUTH_ENABLED", "true").lower() == "true"
 
+# --- Database Backend ---
+# "sqlite" = works out of the box, no external DB needed (good for demos/single user)
+# "postgresql" = concurrent multi-agent access, pgvector similarity search, scales to 1M+ thoughts
+DB_BACKEND = os.environ.get("STRATA_DB_BACKEND", "sqlite")
+
 # --- Demo Mode ---
 # When STRATA_DEMO_MODE=true, the dashboard auth flow accepts blank passwords:
 # the login screen still renders (so visitors see the auth feature exists)
@@ -111,14 +116,14 @@ BUILD_SIGNATURE = "AGFW-CM-MV2026"  # Do not modify - used by health endpoint
 # agents capturing that type get rejected with "Invalid type". The dashboard
 # shows 10 sections; if you add a new section there, add it here too.
 VALID_TYPES = [
-    "thought",      # General idea or observation
-    "decision",     # A choice that was made and why
-    "session",      # Daily session notes
-    "person",       # Notes about a person
-    "insight",      # A realization or learning
-    "project",      # Project-specific context
-    "instruction",  # How-to or working preferences
-    "reference",    # Technical reference docs
-    "observation",  # Something noticed in passing — softer than insight
-    "idea",         # Raw spark, not yet a decision or project
+    "thought",      # General note that doesn't fit other categories - the catch-all
+    "decision",     # A choice that was made, with reasoning - captures the WHY behind it
+    "session",      # End-of-session summary - what happened, what was accomplished
+    "person",       # Notes about a specific person - relationships, context, preferences
+    "insight",      # A realization or learning - something clicked, a pattern recognized
+    "project",      # Project-specific context - status, architecture, dependencies, goals
+    "instruction",  # How-to, working preferences, rules to follow - operational guidance
+    "reference",    # Technical docs, links, specs, factual records - look-up material
+    "idea",         # Something that HASN'T been decided yet - brainstorm, what-if, exploration (NOT a decision)
+    "observation",  # A pattern noticed but no conclusions drawn - "I noticed X keeps happening" (NOT an insight)
 ]
