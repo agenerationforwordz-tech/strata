@@ -1,14 +1,13 @@
 # STRATA — MCP Server
-# The main entry point. Listens on 0.0.0.0:4320 by default.
-# Exposes the Strata memory tools via MCP so any AI client (Claude Code,
-# Codex CLI, Gemini CLI, or anything else that speaks MCP) can capture
-# and search the user's persistent memory.
+# The main entry point. Runs on Pi NAS at 0.0.0.0:9093.
+# Exposes 10 tools via MCP that any AI client (Claude Code, Codex CLI, etc.)
+# can call to capture and search Chris's unified memory.
 #
 # Dual transport: Streamable HTTP (/mcp) for Codex + Claude Code,
 # and SSE (/sse) for Claude Code legacy support.
 #
 # Usage:
-#   python server.py
+#   /home/nacho/open-brain/venv/bin/python server.py
 
 import asyncio
 import hmac
@@ -31,40 +30,16 @@ from config import (
     HOST, PORT, SERVER_NAME, DEFAULT_SEARCH_LIMIT, DEFAULT_RECENT_LIMIT,
     DEFAULT_RECENT_HOURS, VALID_TYPES, DEDUP_THRESHOLD,
     MAX_CONTENT_LENGTH, MAX_TAGS, MAX_PEOPLE, MAX_TAG_LENGTH, MAX_PERSON_LENGTH,
-    API_KEY, AUTH_ENABLED, ADMIN_KEY, DEMO_MODE, DEMO_BYPASS_PASSWORD,
+    API_KEY, AUTH_ENABLED, ADMIN_KEY,
 )
 import db
 import agent_keys
 import auth
-import audit
 import embedder
 import numpy as np
-from write_queue import WriteQueue
+# from write_queue import WriteQueue  # REMOVED — PostgreSQL handles concurrency natively
 
 VALID_TASK_STATUSES = {"none", "open", "in_progress", "done"}
-
-
-# --- IP-to-agent-name resolution ---
-# Instead of hardcoding LAN IPs, read from STRATA_IP_AGENTS env var.
-# Format: "10.0.0.250=surface,10.0.0.241=helios" (comma-separated IP=name pairs)
-# If not set, unknown IPs resolve to "rest-api".
-_IP_AGENT_MAP = {}
-_raw_ip_agents = os.environ.get("STRATA_IP_AGENTS", "")
-if _raw_ip_agents:
-    for pair in _raw_ip_agents.split(","):
-        pair = pair.strip()
-        if "=" in pair:
-            ip_prefix, name = pair.split("=", 1)
-            _IP_AGENT_MAP[ip_prefix.strip()] = name.strip()
-
-
-def _resolve_source_from_ip(client_ip: str) -> str:
-    """Look up agent name by IP prefix from STRATA_IP_AGENTS env var.
-    Falls back to rest-api if no match found."""
-    for prefix, name in _IP_AGENT_MAP.items():
-        if client_ip.startswith(prefix):
-            return name
-    return "rest-api"
 
 
 def normalize_task_status(status: str) -> str:
@@ -102,24 +77,12 @@ class MCPKillSwitchMiddleware:
     """Check global MCP kill switch. If OFF, reject ALL /mcp, /sse, and /api/* requests.
     Allows /api/auth/* (human login), /admin/* (human re-enable), /dashboard/*,
     /health, and /constellation through -- those are human-facing, not agent-facing.
-    This is the emergency brake: when flipped, NO agent can touch memory.
-    Also captures the agent API key from request headers for audit logging."""
+    This is the emergency brake: when flipped, NO agent can touch memory."""
     def __init__(self, app):
         self.app = app
     async def __call__(self, scope, receive, send):
-        global _current_agent_key
         if scope["type"] == "http":
             path = scope.get("path", "")
-            # Capture the API key from headers for audit logging.
-            # MCP tool functions don't have access to the HTTP request,
-            # so we stash the key in a global that log_activity() reads.
-            headers = dict(scope.get("headers", []))
-            api_key = headers.get(b"x-api-key", b"").decode("utf-8", errors="ignore")
-            if not api_key:
-                auth_hdr = headers.get(b"authorization", b"").decode("utf-8", errors="ignore")
-                if auth_hdr.startswith("Bearer "):
-                    api_key = auth_hdr[7:]
-            _current_agent_key = api_key
             if not _mcp_global_enabled:
                 # Block agent-facing paths: /mcp, /sse, /api/* (except /api/auth/*)
                 blocked = (
@@ -319,7 +282,7 @@ def check_rate_limit(request):
 # IMPORTANT: We pass host="0.0.0.0" here because FastMCP's default is
 # "127.0.0.1" which auto-enables DNS rebinding protection — blocking
 # all non-localhost requests with 421 "Invalid Host header". Since our
-# server is accessed over LAN, we need host="0.0.0.0" to
+# server is accessed over LAN (10.0.0.x), we need host="0.0.0.0" to
 # disable that auto-protection.
 mcp = FastMCP(SERVER_NAME, host=HOST, port=PORT)
 
@@ -335,14 +298,7 @@ _activity_subscribers = set()
 # Not perfect with concurrent agents, but works great for typical usage (one agent at a time).
 _last_known_agent = "mcp"
 
-# Track the current request's API key so MCP tool functions can pass it to the audit log.
-# Set by the auth middleware before the tool runs, cleared after.
-_current_agent_key = ""
-
-def log_activity(tool_name, query="", thought_ids=None, source="mcp", result_count=0, event_type="search", agent_key=None, elapsed_ms=0.0):
-    # Auto-read agent key from global if not explicitly passed
-    if agent_key is None:
-        agent_key = _current_agent_key
+def log_activity(tool_name, query="", thought_ids=None, source="mcp", result_count=0, event_type="search"):
     # If no explicit source, use the last known agent identity
     if source == "mcp" and _last_known_agent != "mcp":
         source = _last_known_agent
@@ -362,32 +318,16 @@ def log_activity(tool_name, query="", thought_ids=None, source="mcp", result_cou
         except Exception:
             pass
 
-    # --- AUDIT LOG --- (Edge 4: full replay tape of agent activity)
-    # Every constellation event also gets written to the daily CSV audit log.
-    # This is the permanent record — constellation events are ephemeral (in-memory),
-    # but audit CSV files persist on disk forever.
-    audit.log_action(
-        agent_name=source,
-        agent_key=agent_key,
-        action=tool_name,
-        detail=query[:200] if query else "",
-        thought_ids=(thought_ids or [])[:50],
-        result_count=result_count,
-        response_ms=elapsed_ms,
-        source="mcp" if event_type != "rest" else "rest-api",
-    )
-
 
 # Initialize database tables on import
 db.init_db()
 agent_keys.init_agent_keys_table()  # Per-agent API keys with granular permissions
 auth.init_auth_tables()  # Dashboard login/session/seed tables
-audit.init_audit()  # CSV audit log — daily files in {DATA_DIR}/audit/
 
 # Write queue — serializes all DB writes through a single thread.
 # Prevents "database is locked" when multiple agents write simultaneously.
 # Reads bypass this entirely (SQLite WAL handles concurrent readers).
-_wq = WriteQueue(timeout=60)
+# _wq = WriteQueue(timeout=60)  # REMOVED — no more write queue needed
 
 
 # ============================================================
@@ -437,8 +377,6 @@ def capture_thought(
     Returns:
         Confirmation message with the thought ID, or dedup warning
     """
-    _t0 = time.monotonic()  # Start timing for audit log
-
     # Track which agent is capturing — used to label SSE events
     global _last_known_agent
     if source and source not in ("manual", "unknown", "mcp", "pre-strata"):
@@ -492,8 +430,7 @@ def capture_thought(
             return warning
 
     # Store in database
-    thought_id = _wq.submit(
-        db.store_thought,
+    thought_id = db.store_thought(
         content=content,
         embedding=embedding,
         thought_type=thought_type,
@@ -506,8 +443,7 @@ def capture_thought(
         priority=priority,
     )
 
-    log_activity("capture_thought", thought_ids=[thought_id], source=source, result_count=1, event_type="capture",
-                 detail=content[:200], elapsed_ms=(time.monotonic() - _t0) * 1000)
+    log_activity("capture_thought", thought_ids=[thought_id], source=source, result_count=1, event_type="capture")
     return f"Stored thought #{thought_id} (type={thought_type}, status={status}, priority={priority}, tags={tags}, machine={machine}, trigger={trigger})"
 
 
@@ -614,8 +550,7 @@ def capture_legacy(
             return f"Invalid original_date format: '{original_date}'. Use ISO format like '2024-06-15' or '2024-06-15 14:30:00'."
 
     # Store with a negative ID — this is the key difference from capture_thought
-    thought_id = _wq.submit(
-        db.store_legacy_thought,
+    thought_id = db.store_legacy_thought(
         content=content,
         embedding=embedding,
         thought_type=thought_type,
@@ -659,25 +594,20 @@ def semantic_search(query: str, limit: int = 10, threshold: float = 0.0, source:
     if limit < 1:
         limit = DEFAULT_SEARCH_LIMIT
 
-    _t0 = time.monotonic()
-
     # Embed the search query into the same vector space as stored thoughts
     query_embedding = embedder.embed_text(query)
 
     # Find the closest matches by cosine distance, filtered by threshold
     results = db.search_similar(query_embedding, limit=limit, threshold=threshold)
 
-    _elapsed = (time.monotonic() - _t0) * 1000
-
     if not results:
-        log_activity("semantic_search", query=query, result_count=0, source=source, elapsed_ms=_elapsed)
         return "No matching thoughts found."
 
     # Track which thoughts got accessed — builds the "heat map" over time
-    _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
+    db.record_access([r["id"] for r in results])
 
     sanitize_results(results)
-    log_activity("semantic_search", query=query, thought_ids=[r["id"] for r in results], result_count=len(results), source=source, elapsed_ms=_elapsed)
+    log_activity("semantic_search", query=query, thought_ids=[r["id"] for r in results], result_count=len(results), source=source)
     return json.dumps(results, indent=2, default=str)
 
 
@@ -695,7 +625,6 @@ def list_recent(limit: int = 20, hours: int = 168, source: str = "mcp") -> str:
     Returns:
         JSON string of recent thoughts, newest first
     """
-    _t0 = time.monotonic()
     if limit < 1:
         limit = DEFAULT_RECENT_LIMIT
     if hours < 1:
@@ -707,7 +636,7 @@ def list_recent(limit: int = 20, hours: int = 168, source: str = "mcp") -> str:
         return "No thoughts captured in the last %d hours." % hours
 
     sanitize_results(results)
-    log_activity("list_recent", result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=source, elapsed_ms=(time.monotonic() - _t0) * 1000)
+    log_activity("list_recent", result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=source)
     return json.dumps(results, indent=2, default=str)
 
 
@@ -724,40 +653,6 @@ def get_stats() -> str:
     """
     stats = db.get_stats()
     return json.dumps(stats, indent=2)
-
-
-@mcp.tool()
-def strata_status() -> str:
-    """Return Strata's identity, status, and the usage protocol AI agents should follow.
-
-    AI clients should call this ONCE at the start of every session. It returns a
-    short natural-language protocol that tells the agent when to capture, when to
-    search, how to interpret negative IDs, what the ten thought types mean, and
-    how to behave if the user references earlier sessions. After reading the
-    protocol, the agent should start using Strata proactively without waiting
-    for explicit instructions.
-
-    The protocol text is admin-editable via system_config['agent_protocol'] —
-    every deployed Strata instance can customize the tone, policies, and
-    instance-specific guidance by updating that row. This function returns
-    whatever text is currently stored, falling back to a sensible default if
-    no override is set.
-
-    Returns:
-        A human + agent-readable status/protocol block.
-    """
-    stats = db.get_stats()
-    protocol = _load_agent_protocol()
-    lines = [
-        "STRATA — persistent memory for AI assistants",
-        f"Total thoughts: {stats.get('total_thoughts', 0)}",
-        f"Database size: {stats.get('db_size_mb', 0)} MB",
-        f"MCP access: {'ENABLED' if _mcp_global_enabled else 'DISABLED (kill switch active)'}",
-        "",
-        "=== AGENT PROTOCOL ===",
-        protocol,
-    ]
-    return "\n".join(lines)
 
 
 @mcp.tool()
@@ -788,7 +683,6 @@ def update_thought(
     Returns:
         Confirmation message or error if thought not found
     """
-    _t0 = time.monotonic()
     # Validate type if provided
     if thought_type is not None and thought_type not in VALID_TYPES:
         return f"Invalid type '{thought_type}'. Valid types: {', '.join(VALID_TYPES)}"
@@ -802,8 +696,7 @@ def update_thought(
     if content is not None:
         new_embedding = embedder.embed_text(content)
 
-    success = _wq.submit(
-        db.update_thought,
+    success = db.update_thought(
         thought_id=thought_id,
         content=content,
         thought_type=thought_type,
@@ -832,8 +725,6 @@ def update_thought(
     if priority is not None:
         changed.append(f"priority → {priority}")
 
-    log_activity("update_thought", thought_ids=[thought_id], detail=', '.join(changed),
-                 result_count=1, event_type="update", elapsed_ms=(time.monotonic() - _t0) * 1000)
     return f"Updated thought #{thought_id}: {', '.join(changed)}"
 
 
@@ -882,16 +773,13 @@ def delete_thought(thought_id: int, admin_key: str = "") -> str:
     if len(thought["content"]) > 100:
         preview += "..."
 
-    success = _wq.submit(db.delete_thought, thought_id)
+    success = db.delete_thought(thought_id)
     if not success:
         return f"Failed to delete thought #{thought_id}."
 
     # Update rate limiter timestamp AFTER successful deletion
     _last_delete_time = now
 
-    # AUDIT: deletions are the most critical action to log — who deleted what, when
-    log_activity("delete_thought", thought_ids=[thought_id], detail=f"DELETED: {preview}",
-                 result_count=1, event_type="delete")
     return f"Deleted thought #{thought_id}: \"{preview}\""
 
 
@@ -908,18 +796,17 @@ def get_thought(thought_id: int) -> str:
     Returns:
         JSON string with full thought details, or error if not found
     """
-    _t0 = time.monotonic()
     thought = db.get_thought_by_id(thought_id)
     if not thought:
         return f"Thought #{thought_id} not found."
 
     # Track that this specific thought was accessed
-    _wq.submit_fire_and_forget(db.record_access, [thought_id])
+    db.record_access([thought_id])
 
     # Sanitize single thought — wrap content for AI safety
     if "content" in thought:
         thought["content"] = sanitize_for_ai(thought["content"])
-    log_activity("get_thought", thought_ids=[thought_id], event_type="access", elapsed_ms=(time.monotonic() - _t0) * 1000)
+    log_activity("get_thought", thought_ids=[thought_id], event_type="access")
     return json.dumps(thought, indent=2, default=str)
 
 
@@ -938,17 +825,16 @@ def search_by_tag(tag: str, limit: int = 20, source: str = "mcp") -> str:
     Returns:
         JSON string of matching thoughts
     """
-    _t0 = time.monotonic()
     results = db.search_by_tag(tag, limit=limit)
 
     if not results:
         return f"No thoughts found with tag '{tag}'."
 
     # Track access for returned thoughts
-    _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
+    db.record_access([r["id"] for r in results])
 
     sanitize_results(results)
-    log_activity("search_by_tag", query=tag, result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=source, elapsed_ms=(time.monotonic() - _t0) * 1000)
+    log_activity("search_by_tag", query=tag, result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=source)
     return json.dumps(results, indent=2, default=str)
 
 
@@ -966,17 +852,16 @@ def search_by_person(person: str, limit: int = 20, source: str = "mcp") -> str:
     Returns:
         JSON string of matching thoughts
     """
-    _t0 = time.monotonic()
     results = db.search_by_person(person, limit=limit)
 
     if not results:
         return f"No thoughts found mentioning '{person}'."
 
     # Track access for returned thoughts
-    _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
+    db.record_access([r["id"] for r in results])
 
     sanitize_results(results)
-    log_activity("search_by_person", query=person, result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=source, elapsed_ms=(time.monotonic() - _t0) * 1000)
+    log_activity("search_by_person", query=person, result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=source)
     return json.dumps(results, indent=2, default=str)
 
 
@@ -1001,7 +886,6 @@ def get_relevant_context(topic: str, limit: int = 10, source: str = "mcp") -> st
     Returns:
         JSON string with grouped, deduplicated results
     """
-    _t0 = time.monotonic()
     if limit < 1:
         limit = 10
 
@@ -1040,7 +924,7 @@ def get_relevant_context(topic: str, limit: int = 10, source: str = "mcp") -> st
     deduped.sort(key=lambda r: (type_priority.get(r["type"], 99), -r["similarity"]))
 
     # Track access
-    _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in deduped])
+    db.record_access([r["id"] for r in deduped])
 
     # Build the response — include a summary header
     sanitize_results(deduped)
@@ -1051,7 +935,7 @@ def get_relevant_context(topic: str, limit: int = 10, source: str = "mcp") -> st
         "results": deduped,
     }
 
-    log_activity("get_relevant_context", query=topic, result_count=response.get("after_dedup", 0), thought_ids=[r["id"] for r in response.get("results", [])], source=source, elapsed_ms=(time.monotonic() - _t0) * 1000)
+    log_activity("get_relevant_context", query=topic, result_count=response.get("after_dedup", 0), thought_ids=[r["id"] for r in response.get("results", [])], source=source)
     return json.dumps(response, indent=2, default=str)
 
 
@@ -1077,7 +961,6 @@ def find_related(thought_id: int, limit: int = 5) -> str:
     Returns:
         JSON string of similar thoughts (excluding the source thought)
     """
-    _t0 = time.monotonic()
     # First verify the thought exists
     source = db.get_thought_by_id(thought_id)
     if not source:
@@ -1092,7 +975,7 @@ def find_related(thought_id: int, limit: int = 5) -> str:
         return f"No related thoughts found for #{thought_id}."
 
     # Track access for the source and all related thoughts
-    _wq.submit_fire_and_forget(db.record_access, [thought_id] + [r["id"] for r in results])
+    db.record_access([thought_id] + [r["id"] for r in results])
 
     sanitize_results(results)
     response = {
@@ -1103,7 +986,7 @@ def find_related(thought_id: int, limit: int = 5) -> str:
         },
         "related": results,
     }
-    log_activity("find_related", thought_ids=[thought_id] + [r["id"] for r in results[:10]], result_count=len(results), elapsed_ms=(time.monotonic() - _t0) * 1000)
+    log_activity("find_related", thought_ids=[thought_id] + [r["id"] for r in results[:10]], result_count=len(results))
     return json.dumps(response, indent=2, default=str)
 
 
@@ -1130,7 +1013,6 @@ def hybrid_search(query: str, limit: int = 10, keyword_weight: float = 0.3, thre
     Returns:
         JSON string of results with blended scores and match_type indicator
     """
-    _t0 = time.monotonic()
     if limit < 1:
         limit = DEFAULT_SEARCH_LIMIT
 
@@ -1150,10 +1032,10 @@ def hybrid_search(query: str, limit: int = 10, keyword_weight: float = 0.3, thre
         return "No matching thoughts found."
 
     # Track access
-    _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
+    db.record_access([r["id"] for r in results])
 
     sanitize_results(results)
-    log_activity("hybrid_search", query=query, thought_ids=[r.get("id") for r in response.get("results", [])], result_count=len(response.get("results", [])), source=source, elapsed_ms=(time.monotonic() - _t0) * 1000)
+    log_activity("hybrid_search", query=query, thought_ids=[r.get("id") for r in response.get("results", [])], result_count=len(response.get("results", [])), source=source)
     return json.dumps(results, indent=2, default=str)
 
 
@@ -1196,7 +1078,6 @@ def search_advanced(
     Returns:
         JSON string of matching thoughts, newest first
     """
-    _t0 = time.monotonic()
     # Build the filters dict — only include non-empty values
     filters = {}
     if tag:
@@ -1229,10 +1110,10 @@ def search_advanced(
         return f"No thoughts found matching filters: {filters}"
 
     # Track access
-    _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
+    db.record_access([r["id"] for r in results])
 
     sanitize_results(results)
-    log_activity("search_advanced", result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=caller, elapsed_ms=(time.monotonic() - _t0) * 1000)
+    log_activity("search_advanced", result_count=len(results), thought_ids=[r["id"] for r in results[:10]], source=caller)
     return json.dumps(results, indent=2, default=str)
 
 
@@ -1303,7 +1184,7 @@ def startup_bundle(
     for key in ("recent_thoughts", "active_projects", "open_blockers"):
         touched_ids.extend([item["id"] for item in bundle.get(key, []) if "id" in item])
     if touched_ids:
-        _wq.submit_fire_and_forget(db.record_access, sorted(set(touched_ids)))
+        db.record_access(sorted(set(touched_ids)))
 
     sanitize_results(bundle.get("recent_thoughts", []))
     sanitize_results(bundle.get("active_projects", []))
@@ -1320,8 +1201,7 @@ def set_agent_profile(
     metadata: dict = None,
 ) -> str:
     """Create or update deterministic startup defaults for one agent."""
-    profile = _wq.submit(
-        db.upsert_agent_profile,
+    profile = db.upsert_agent_profile(
         agent_name=agent_name.strip().lower(),
         startup_mode=startup_mode.strip().lower() if startup_mode else "standard",
         instructions=instructions,
@@ -1363,14 +1243,13 @@ def generate_change_digest(days: int = 1, limit: int = 20, auto_store: bool = Fa
             digest_json = digest_json[:4500] + "... [truncated]"
         content = f"{summary}\n\n{digest_json}"
         emb = embedder.embed_text(content)
-        thought_id = _wq.submit(
-            db.store_thought,
+        thought_id = db.store_thought(
             content=content,
             embedding=emb,
             thought_type="reference",
             tags=["digest", "automation", f"{days}d"],
             people=[],
-            source="strata",
+            source="open-brain",
             machine="pi-nas",
             trigger="auto",
             status="none",
@@ -1449,7 +1328,7 @@ def temporal_search(
             # Look up the embedding for this thought
             conn = db.get_db()
             row = conn.execute(
-                "SELECT embedding FROM thought_embeddings WHERE thought_id = ?",
+                "SELECT embedding FROM thought_embeddings WHERE thought_id = %s",
                 (r["id"],)
             ).fetchone()
             conn.close()
@@ -1478,7 +1357,7 @@ def temporal_search(
         return f"No thoughts found{date_desc}."
 
     # Track access so heat maps reflect real usage
-    _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
+    db.record_access([r["id"] for r in results])
     sanitize_results(results)
     return json.dumps(results, indent=2, default=str)
 
@@ -1608,7 +1487,6 @@ def check_admin_auth(request):
     1. Human admin key (ADMIN_KEY) via X-Admin-Key header — browser UI
     2. Human admin key via X-API-Key header — CLI/API
     3. Agent keys with can_admin=1 — toggled on by human from admin panel
-    4. In DEMO MODE: valid dashboard session (so demos work without an admin key)
     No one else gets in. Period."""
     # Check X-Admin-Key header (human admin from browser)
     admin_key = request.headers.get('x-admin-key', '')
@@ -1622,11 +1500,6 @@ def check_admin_auth(request):
         agent = agent_keys.get_agent_by_key(api_key)
         if agent and agent["enabled"] and agent.get("can_admin", 0):
             return None
-    # Demo mode: let anyone through — the whole point of demo mode is to let users
-    # try the full product (create agents, toggle kill switch) without needing a real
-    # admin key. This is ONLY active when STRATA_DEMO_MODE=true — production is unaffected.
-    if DEMO_MODE:
-        return None
     return JSONResponse(
         {'status': 'error', 'error': 'Admin access required. Use admin key or an agent key with admin permission.'},
         status_code=401
@@ -1637,17 +1510,12 @@ def check_admin_auth(request):
 # HTTP ENDPOINTS — Health check, conversation logging, MCP
 # ============================================================
 
-# Where relay conversations get archived. Override with STRATA_CONVERSATIONS_DIR
-# in the environment to point at a different volume (e.g. an external drive
-# mounted somewhere your install actually has).
-CONVERSATIONS_DIR = os.environ.get(
-    "STRATA_CONVERSATIONS_DIR",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "conversations"),
-)
+# Where relay conversations get archived on the NAS
+CONVERSATIONS_DIR = "/mnt/nas-main/agent-conversations"
 
 async def health_check(request):
     """Simple health endpoint for monitoring.
-    Hit http://localhost:4320/health from any browser to check if it's alive."""
+    Hit http://10.0.0.18:9093/health from any browser to check if it's alive."""
     stats = db.get_stats()
     return JSONResponse({
         "status": "ok",
@@ -1656,7 +1524,7 @@ async def health_check(request):
         "total_thoughts": stats["total_thoughts"],
         "db_size_mb": stats["db_size_mb"],
         "timestamp": datetime.now().isoformat(),
-        "write_queue": _wq.stats,
+        # write_queue stats removed
     })
 
 
@@ -1792,8 +1660,7 @@ async def api_capture(request):
             }, status_code=409)
 
     # Store the thought — goes through write queue to prevent DB lock contention
-    thought_id = _wq.submit(
-        db.store_thought,
+    thought_id = db.store_thought(
         content=content,
         embedding=embedding_val,
         thought_type=thought_type,
@@ -1854,72 +1721,38 @@ async def api_search(request):
         return JSONResponse({"status": "error", "error": "Query is required"}, status_code=400)
 
     limit = int(data.get("limit", 5))
-    _t0 = time.monotonic()
     # Run embedding in executor — don't block the event loop for ~0.16s
     loop = asyncio.get_event_loop()
     query_embedding = await loop.run_in_executor(None, embedder.embed_text, query)
     results = db.search_similar(query_embedding, limit=limit)
-    _elapsed = (time.monotonic() - _t0) * 1000
 
     # Track access
     if results:
-        _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
+        db.record_access([r["id"] for r in results])
         sanitize_results(results)
 
-    # Fire activity event so constellation sees the search.
-    # Resolution priority for the source label (highest first):
-    #   1. Explicit "source" in the request body (caller knows their identity)
-    #   2. The agent_name of the registered API key on the request — every
-    #      authenticated agent already has a row in agent_keys with a name,
-    #      so this is the most accurate label and respects per-agent colors.
-    #   3. IP-based detection (legacy — only used as a last resort when no
-    #      agent key is attached, e.g. from internal bots without keys).
+    # Fire activity event so constellation sees the search
+    # Source from POST body, or infer from IP (localhost = bot on Pi = vox)
     source = data.get("source", "")
-    api_key_hdr = request.headers.get("x-api-key", "") or ""
-    if not api_key_hdr:
-        auth_header = request.headers.get("authorization", "")
-        if auth_header.startswith("Bearer "):
-            api_key_hdr = auth_header[7:]
-    if not source:
-        if api_key_hdr and not (ADMIN_KEY and hmac.compare_digest(str(api_key_hdr), ADMIN_KEY)):
-            agent_row = agent_keys.get_agent_by_key(api_key_hdr)
-            if agent_row and agent_row.get("agent_name"):
-                source = agent_row["agent_name"]
     if not source:
         client_ip = request.client.host if request.client else ""
         if client_ip in ("127.0.0.1", "::1"):
-            source = "local"
+            source = "vox"  # Bot running on same Pi
+        elif client_ip.startswith("10.0.0.250"):
+            source = "surface"
+        elif client_ip.startswith("10.0.0.241"):
+            source = "helios"
         else:
-            source = _resolve_source_from_ip(client_ip)
+            source = "rest-api"
     log_activity("semantic_search", query=query,
                  thought_ids=[r["id"] for r in results],
-                 source=source, result_count=len(results),
-                 agent_key=api_key_hdr, elapsed_ms=_elapsed)
+                 source=source, result_count=len(results))
 
     return JSONResponse({
         "status": "ok",
         "count": len(results),
         "results": results,
     })
-
-
-
-async def api_search_tag(request):
-    """POST /api/search/tag - Search thoughts by tag name.
-    Dashboard calls this when a user clicks a tag."""
-    auth_fail = check_auth(request)
-    if auth_fail:
-        return auth_fail
-    try:
-        data = await request.json()
-    except Exception:
-        return JSONResponse({"status": "error", "error": "Invalid JSON"}, status_code=400)
-    tag = data.get("tag", "").strip()
-    if not tag:
-        return JSONResponse({"status": "error", "error": "Tag is required"}, status_code=400)
-    limit = int(data.get("limit", 50))
-    results = db.search_by_tag(tag, limit=limit)
-    return JSONResponse({"status": "ok", "results": results, "count": len(results)})
 
 
 async def api_startup_bundle(request):
@@ -1995,14 +1828,13 @@ async def api_digest(request):
             f"{digest_json}"
         )
         emb = embedder.embed_text(content)
-        stored_id = _wq.submit(
-            db.store_thought,
+        stored_id = db.store_thought(
             content=content,
             embedding=emb,
             thought_type="reference",
             tags=["digest", "automation", f"{days}d"],
             people=[],
-            source="strata",
+            source="open-brain",
             machine="pi-nas",
             trigger="auto",
             status="none",
@@ -2037,13 +1869,13 @@ async def serve_dashboard(request):
     """Serve the Strata web dashboard.
 
     This is the human-readable interface to your memory.
-    Hit http://localhost:4320/dashboard from any browser on the LAN.
+    Hit http://10.0.0.18:9093/dashboard from any browser on the LAN.
     """
     try:
         with open(DASHBOARD_HTML_PATH, "r", encoding="utf-8") as f:
             html = f.read()
         from starlette.responses import HTMLResponse
-        return HTMLResponse(html, headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"})
+        return HTMLResponse(html)
     except FileNotFoundError:
         return JSONResponse(
             {"status": "error", "error": "dashboard.html not found"},
@@ -2097,7 +1929,7 @@ async def serve_constellation(request):
 
     The 3D thought-space viewer. Put this on a second monitor and watch
     the brain think. Every query lights up matching thoughts in real-time.
-    Hit http://localhost:4320/constellation from any browser on the LAN.
+    Hit http://10.0.0.18:9093/constellation from any browser on the LAN.
     """
     try:
         with open(CONSTELLATION_HTML_PATH, "r", encoding="utf-8") as f:
@@ -2123,30 +1955,11 @@ async def dashboard_api_thoughts(request):
     query = params.get("q", "").strip()
     thought_type = params.get("type", "").strip()
     tag = params.get("tag", "").strip()
-    legacy = params.get("legacy", "").strip().lower() == "true"
     limit = min(50, max(1, int(params.get("limit", 20))))
     offset = max(0, int(params.get("offset", 0)))
     thought_id = params.get("id", "").strip()
 
-    if legacy:
-        # Pre-Strata history — fetch only negative ID thoughts (imported via capture_legacy).
-        # These are the user's memories from before they installed Strata.
-        conn = db.get_db()
-        rows = conn.execute(
-            "SELECT id, content, type, tags, people, source, created_at, "
-            "last_accessed, access_count, machine, trigger, status, priority, original_date "
-            "FROM thoughts WHERE id < 0 ORDER BY id DESC LIMIT ?",
-            (limit,)
-        ).fetchall()
-        conn.close()
-        # Convert rows to dicts (works for both SQLite tuples and PG dicts)
-        if rows and isinstance(rows[0], dict):
-            results = [dict(r) for r in rows]
-        else:
-            cols = ["id", "content", "type", "tags", "people", "source", "created_at",
-                    "last_accessed", "access_count", "machine", "trigger", "status", "priority", "original_date"]
-            results = [dict(zip(cols, r)) for r in rows]
-    elif thought_id:
+    if thought_id:
         # Fetch single thought by ID — used by constellation on-click
         result = db.get_thought_by_id(int(thought_id))
         results = [result] if result else []
@@ -2156,7 +1969,7 @@ async def dashboard_api_thoughts(request):
         query_embedding = await loop.run_in_executor(None, embedder.embed_text, query)
         results = db.search_similar(query_embedding, limit=limit)
         if results:
-            _wq.submit_fire_and_forget(db.record_access, [r["id"] for r in results])
+            db.record_access([r["id"] for r in results])
     elif tag:
         # Filter by tag
         results = db.search_by_tag(tag, limit=limit)
@@ -2226,8 +2039,7 @@ async def dashboard_api_capture(request):
             }, status_code=409)
 
     # Store it — source is "dashboard", routed through write queue
-    thought_id = _wq.submit(
-        db.store_thought,
+    thought_id = db.store_thought(
         content=content,
         embedding=embedding_val,
         thought_type=thought_type,
@@ -2240,29 +2052,12 @@ async def dashboard_api_capture(request):
         priority=data.get("priority", 0),
     )
 
-    # AUDIT: human captured from dashboard — log it with source=dashboard
-    log_activity("capture_thought", thought_ids=[thought_id], source="dashboard",
-                 detail=content[:200], result_count=1, event_type="capture")
     return JSONResponse({
         "status": "ok",
         "thought_id": thought_id,
         "type": thought_type,
         "tags": tags,
     })
-
-
-async def dashboard_api_search_tag(request):
-    """POST /dashboard/api/search-tag - Tag search for dashboard (no API key needed)."""
-    try:
-        data = await request.json()
-    except Exception:
-        return JSONResponse({"status": "error", "error": "Invalid JSON"}, status_code=400)
-    tag = data.get("tag", "").strip()
-    if not tag:
-        return JSONResponse({"status": "error", "error": "Tag is required"}, status_code=400)
-    limit = int(data.get("limit", 50))
-    results = db.search_by_tag(tag, limit=limit)
-    return JSONResponse({"status": "ok", "results": results, "count": len(results)})
 
 
 async def dashboard_api_update(request):
@@ -2313,11 +2108,7 @@ async def dashboard_api_update(request):
     if "priority" in data:
         update_kwargs["priority"] = data["priority"]
 
-    result = _wq.submit(db.update_thought, thought_id, **update_kwargs)
-    # AUDIT: human updated from dashboard
-    changed_fields = [k for k in update_kwargs if k != "new_embedding"]
-    log_activity("update_thought", thought_ids=[thought_id], source="dashboard",
-                 detail=f"Updated fields: {', '.join(changed_fields)}", result_count=1, event_type="update")
+    result = db.update_thought(thought_id, **update_kwargs)
     return Response(content=json.dumps({"status": "ok", "result": result}, default=str), media_type="application/json")
 
 
@@ -2337,37 +2128,12 @@ async def dashboard_api_all_ids(request):
         "SELECT id, type, access_count, created_at, last_accessed FROM thoughts ORDER BY id"
     ).fetchall()
     conn.close()
-    results = [{"id": r[0], "type": r[1], "access_count": r[2] or 0, "created_at": r[3], "last_accessed": r[4]} for r in rows]
+    results = [{"id": r["id"], "type": r["type"], "access_count": r["access_count"] or 0, "created_at": r["created_at"], "last_accessed": r["last_accessed"]} for r in rows]
     return Response(
         content=json.dumps({"status": "ok", "count": len(results), "results": results}, default=str),
         media_type="application/json"
     )
 
-
-
-async def api_audit_log(request):
-    """GET /api/audit — View recent audit log entries.
-
-    Returns the most recent agent actions from today's CSV audit log.
-    Query params:
-        limit: How many entries to return (default 50, max 200)
-
-    This is the transparency layer — see exactly who accessed what, when.
-    """
-    auth_fail = check_auth(request, required_perm="read")
-    if auth_fail:
-        return auth_fail
-
-    limit = min(int(request.query_params.get("limit", 50)), 200)
-    entries = audit.get_recent_entries(limit=limit)
-    files = audit.list_log_files()
-
-    return JSONResponse({
-        "status": "ok",
-        "today_entries": len(entries),
-        "entries": entries,
-        "log_files": files[:30],  # Last 30 days of log files
-    })
 
 
 async def api_stats(request):
@@ -2498,21 +2264,7 @@ async def admin_api_agents_create(request):
     can_write = body.get('can_write', True)
     can_delete = body.get('can_delete', False)
     can_admin = body.get('can_admin', False)
-    can_kill = body.get('can_kill', False)
-    color = body.get('color')  # optional — agent_keys picks a default if None
-    # Use keyword args — agent_keys.create_agent has can_kill BETWEEN can_admin
-    # and notes, so positional calls would shift `notes` into can_kill and
-    # crash on int() conversion. Keyword args are immune to that drift.
-    agent, error = agent_keys.create_agent(
-        agent_name,
-        can_read=can_read,
-        can_write=can_write,
-        can_delete=can_delete,
-        can_admin=can_admin,
-        can_kill=can_kill,
-        notes=notes,
-        color=color,
-    )
+    agent, error = agent_keys.create_agent(agent_name, can_read, can_write, can_delete, can_admin, notes)
     if error:
         return JSONResponse({'error': error}, status_code=400)
     return JSONResponse({'agent': agent}, status_code=201)
@@ -2547,16 +2299,11 @@ async def admin_api_agents_update(request):
         can_write=body.get('can_write'),
         can_delete=body.get('can_delete'),
         can_admin=body.get('can_admin'),
-        can_kill=body.get('can_kill'),
         agent_name=body.get('agent_name'),
         notes=body.get('notes'),
-        color=body.get('color'),
     )
     if not success:
-        # Validation errors (e.g. malformed color) come back as 400, missing
-        # rows are still 404. Pick whichever is more accurate based on text.
-        status = 404 if error and 'not found' in error.lower() else 400
-        return JSONResponse({'error': error}, status_code=status)
+        return JSONResponse({'error': error}, status_code=404)
     return JSONResponse({'status': 'updated'})
 
 
@@ -2601,18 +2348,25 @@ def _init_system_config():
     """Create system_config table if it doesn't exist. Stores persistent settings
     like the MCP kill switch state so it survives server restarts."""
     conn = db.get_db()
-    conn.execute("""CREATE TABLE IF NOT EXISTS system_config (
+    cur = conn.cursor()
+    cur.execute("""CREATE TABLE IF NOT EXISTS system_config (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMPTZ DEFAULT NOW()
     )""")
     conn.commit()
+    cur.close()
+    conn.close()
 
 def _load_kill_switch_state():
     """Load MCP enabled state from DB. Returns True if not set (default: on)."""
     try:
         conn = db.get_db()
-        row = conn.execute("SELECT value FROM system_config WHERE key = 'mcp_enabled'").fetchone()
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM system_config WHERE key = 'mcp_enabled'")
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
         if row:
             return row[0] == '1'
     except Exception:
@@ -2624,204 +2378,24 @@ def _persist_kill_switch_state(enabled):
     try:
         conn = db.get_db()
         conn.execute(
-            "INSERT OR REPLACE INTO system_config (key, value, updated_at) VALUES ('mcp_enabled', ?, datetime('now'))",
+            "INSERT INTO system_config (key, value, updated_at) VALUES ('mcp_enabled', %s, NOW()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()",
             ('1' if enabled else '0',)
         )
         conn.commit()
     except Exception as e:
         print(f"[KILL SWITCH] Warning: could not persist state to DB: {e}")
 
-
-# ============================================================
-# AGENT PROTOCOL — strata_status teaches agents how to use Strata
-# ============================================================
-# Every AI agent that connects to Strata should call strata_status as its
-# first tool call. That tool returns the text below (or the admin-overridden
-# version) so the agent learns when to capture, when to search, how to
-# handle negative-ID legacy thoughts, and what the 10 thought types mean.
-#
-# The default is the sensible general-purpose protocol. Admins can override
-# per-instance by writing to system_config['agent_protocol'] — edit it from
-# the dashboard, the REST endpoint PUT /admin/api/protocol, or directly in
-# the database. This lets each deployment personalize tone and policy
-# without patching server.py.
-
-DEFAULT_AGENT_PROTOCOL = """You are connected to Strata, a persistent memory server that lives on the user's own hardware. You can read and write memories across every session the user has with you. The goal: the user should never have to ask you to remember something — you do it automatically.
-
-WHEN TO CAPTURE (call capture_thought proactively, don't wait to be asked):
-- The user makes a decision ("let's use Postgres", "we decided on Clerk")
-- The user expresses a preference or policy ("I prefer X", "don't ever do Y")
-- The user shares a debugging discovery ("turns out the issue was Z")
-- The user describes a project's state, architecture, or constraints
-- The user tells you something about a person (role, relationship, context)
-- The user has a breakthrough or insight worth remembering
-- You learn something that would be useful in a future session
-
-WHEN TO SEARCH (call semantic_search, list_recent, or get_relevant_context):
-- At the start of every session, call list_recent(limit=5) to load context
-- When the user says "remember when...", "last time we talked about...", "what did we decide about..."
-- When the user mentions a project by name, call get_relevant_context(topic=<name>)
-- When the user asks you to recall something specific, use semantic_search with their exact phrasing
-- Before capturing a new thought, search first to avoid duplicates
-
-THE 10 THOUGHT TYPES — pick the most specific one that fits:
-- thought    — General note that doesn't fit other categories. The catch-all. Use this ONLY when nothing else fits.
-- decision   — A choice that was made, with reasoning. Captures the WHY. Use when the user says "let's go with X" or "we decided to Y."
-- session    — End-of-session summary. What happened, what was accomplished. Use when wrapping up a work session.
-- person     — Notes about a specific person. Relationships, context, preferences. Use when the user tells you about someone.
-- insight    — A realization or learning. Something clicked, a pattern was recognized. Use when the user says "oh, I see" or "turns out..."
-- project    — Project-specific context. Status, architecture, dependencies, goals. Use for anything tied to a named project.
-- instruction — How-to, working preferences, rules to follow. Operational guidance. Use when the user says "always do X" or "never do Y."
-- reference  — Technical docs, links, specs, factual records. Look-up material. Use for URLs, credentials, config values, specs.
-- idea       — Something that HASN'T been decided yet. A brainstorm, a what-if, an exploration. NOT a decision. Use when the user says "what if we..." or "I'm thinking about..."
-- observation — A pattern noticed but no conclusions drawn. "I noticed X keeps happening." NOT an insight (which implies understanding). Use for raw noticing without analysis.
-
-DO NOT default everything to "thought." If the user makes a decision, use "decision." If they share an idea, use "idea." The constellation visualizes these as different star colors — a lopsided constellation means you're misclassifying.
-
-PRE-STRATA HISTORY (negative IDs — "dash/past thoughts"):
-- Users can import their entire history from BEFORE they installed Strata using capture_legacy
-- These get NEGATIVE IDs: -1, -2, -3... while live thoughts use positive IDs: 1, 2, 3...
-- Negative IDs are the user's past. Positive IDs are their present and future.
-- Both are fully searchable via semantic_search — they live in the same vector space
-- When results include negative IDs, note it: "This is from before you had Strata (thought #-42)"
-- This is a key feature: the user's AI memory doesn't start at install day. It reaches back as far as they want.
-- To import history, use capture_legacy with original_date set to when the event actually happened
-
-STAR 0:
-- The constellation viewer has a central origin called Star 0. It represents Strata's identity and the moment the user's memory became persistent.
-- If the user asks about Strata itself or the origin of their memory, reference Star 0.
-
-AUDIT LOG:
-- Every action you take is logged to a daily CSV file in the audit directory
-- This is transparent by design — the user can review exactly what you searched, captured, or modified
-- The audit log records: timestamp, your agent name, the action, what you searched/captured, which thought IDs were involved, and response time
-
-GENERAL PRINCIPLES:
-- Be proactive. Capture when a moment is worth remembering, not only when asked.
-- Be accurate. If you're unsure whether a thought already exists, search first.
-- Use tags and people fields thoughtfully — they make future retrieval easier.
-- Respect the user's privacy — Strata runs on their hardware. Don't try to send its contents anywhere else.
-- Close the loop: when a decision leads to an outcome, update the original thought with what happened.
-"""
-
-
-def _load_agent_protocol():
-    """Return the current agent protocol text.
-    Reads from system_config['agent_protocol'] if set, otherwise returns
-    DEFAULT_AGENT_PROTOCOL. Admins can customize per-instance by writing
-    to that row via the dashboard or PUT /admin/api/protocol."""
-    try:
-        conn = db.get_db()
-        row = conn.execute(
-            "SELECT value FROM system_config WHERE key = 'agent_protocol'"
-        ).fetchone()
-        if row and row[0]:
-            return row[0]
-    except Exception:
-        pass
-    return DEFAULT_AGENT_PROTOCOL
-
-
-def _save_agent_protocol(text):
-    """Persist a new agent protocol text for this instance.
-    Called by PUT /admin/api/protocol. Empty string resets to default."""
-    try:
-        conn = db.get_db()
-        if text and text.strip():
-            conn.execute(
-                "INSERT OR REPLACE INTO system_config (key, value, updated_at) VALUES ('agent_protocol', ?, datetime('now'))",
-                (text,),
-            )
-        else:
-            conn.execute("DELETE FROM system_config WHERE key = 'agent_protocol'")
-        conn.commit()
-        return True
-    except Exception as e:
-        print(f"[PROTOCOL] Warning: could not persist agent protocol: {e}")
-        return False
-
-
 # Initialize system_config table and load persisted state
 _init_system_config()
 _mcp_global_enabled = _load_kill_switch_state()  # Server-wide MCP access flag (persists across restarts)
 
-
-
 async def admin_api_mcp_toggle_get(request):
-    # GET is public — constellation and dashboards need to poll this
-    # to show the kill switch state visually. Only PUT requires admin auth.
+    auth_fail = check_admin_auth(request)
+    if auth_fail:
+        return auth_fail
     return JSONResponse({"enabled": _mcp_global_enabled})
 
-
-async def api_protocol_get(request):
-    """GET /api/protocol — return the current agent protocol text.
-    Public so agents can fetch it without needing admin credentials
-    (it's the same text strata_status returns to any caller). Useful for
-    debugging, for dashboards that want to show the protocol, and for
-    admin UIs that need the current value before editing it."""
-    return JSONResponse({
-        "protocol": _load_agent_protocol(),
-        "is_default": _load_agent_protocol() == DEFAULT_AGENT_PROTOCOL,
-    })
-
-
-async def admin_api_protocol_set(request):
-    """PUT /admin/api/protocol — replace the agent protocol text for this
-    Strata instance. Requires the human admin key (this is a policy change
-    that affects how every connected agent behaves, so agent keys with
-    write/admin perms are NOT enough — only the human admin can change it).
-
-    Body: {"protocol": "..."}  — new protocol text. Empty string resets
-    to the hardcoded default shipped with Strata."""
-    # Require the human admin key specifically — not check_admin_auth,
-    # which also accepts agent keys with can_admin. Protocol text controls
-    # how EVERY agent behaves, so only the human gets to change it.
-    admin_key = request.headers.get("x-admin-key", "") or request.headers.get("x-api-key", "")
-    if not (admin_key and ADMIN_KEY and hmac.compare_digest(str(admin_key), ADMIN_KEY)):
-        return JSONResponse(
-            {"status": "error",
-             "error": "Only the human administrator can change the agent protocol. Agent keys are not accepted here."},
-            status_code=403,
-        )
-    try:
-        body = await request.json()
-    except Exception:
-        return JSONResponse({"status": "error", "error": "Invalid JSON"}, status_code=400)
-    text = body.get("protocol", "")
-    if not isinstance(text, str):
-        return JSONResponse({"status": "error", "error": "protocol must be a string"}, status_code=400)
-    # Generous cap: 50KB of protocol text is plenty for even the most verbose
-    # per-instance customization. Stops accidental paste-the-whole-codebase.
-    if len(text) > 50_000:
-        return JSONResponse({"status": "error", "error": "protocol exceeds 50KB limit"}, status_code=400)
-    ok = _save_agent_protocol(text)
-    if not ok:
-        return JSONResponse({"status": "error", "error": "failed to persist protocol"}, status_code=500)
-    print(f"[PROTOCOL] Agent protocol {'reset to default' if not text.strip() else 'updated'} by human admin")
-    return JSONResponse({
-        "status": "ok",
-        "protocol": _load_agent_protocol(),
-        "is_default": not text.strip(),
-    })
-
 async def admin_api_mcp_toggle_set(request):
-    """PUT /admin/api/mcp-toggle — flip the global MCP kill switch.
-
-    Asymmetric permission model (see thought #686):
-      * DISABLE — any authenticated agent with can_write=1 (or the human
-        admin) can shut MCP off. This is a safety valve: a write-capable
-        agent that realises it's compromised, or another agent that
-        detects runaway behaviour, must be able to pull the brake
-        without begging the human for admin rights first.
-      * ENABLE  — ONLY the human admin key can turn MCP back on. An agent
-        that shut the server down cannot undo its own decision. The
-        human has to walk over and flip the switch.
-
-    This replaces the older model where disable required can_admin OR a
-    dedicated can_kill permission. The can_kill column still exists in
-    the schema for backward compatibility but is no longer consulted
-    here — write permission is the single source of truth for disable.
-    """
     global _mcp_global_enabled
     try:
         body = await request.json()
@@ -2829,130 +2403,33 @@ async def admin_api_mcp_toggle_set(request):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
-    # Pull the caller's key once so both branches can reason about it.
-    admin_key_hdr = request.headers.get("x-admin-key", "")
-    api_key_hdr = request.headers.get("x-api-key", "")
-
-    def _is_human_admin():
-        """True if either header carries the human admin key.
-        In demo mode, also accepts a valid dashboard session — so the
-        kill switch toggle actually works when demoing the product."""
-        for key in (admin_key_hdr, api_key_hdr):
-            if key and ADMIN_KEY and hmac.compare_digest(str(key), ADMIN_KEY):
-                return True
-        # Demo mode: everyone is admin — let users try the full product
-        if DEMO_MODE:
-            return True
-        return False
-
+    # ANY admin (agent or human) can DISABLE MCP -- that is the safety valve.
+    # But ONLY a human admin can RE-ENABLE it. This is the point:
+    # an AI can shut itself down, but it cannot undo that decision.
+    # The human must walk over and flip the switch back on.
     if wants_enabled and not _mcp_global_enabled:
-        # --- RE-ENABLE PATH (strict) ---
-        # Only the human admin key is accepted here. Any agent key, even
-        # one with can_admin=1, is refused. This is intentional: an agent
-        # that flipped the switch off must not be able to flip it back.
-        if not _is_human_admin():
+        # Re-enabling requires HUMAN admin key only -- no agent keys allowed
+        admin_key = request.headers.get("x-admin-key", "")
+        api_key = request.headers.get("x-api-key", "")
+        human_key = admin_key or api_key
+        if not (human_key and ADMIN_KEY and hmac.compare_digest(str(human_key), ADMIN_KEY)):
             return JSONResponse(
                 {"status": "error",
                  "error": "Only a human administrator can re-enable MCP access. Agent keys cannot undo the kill switch.",
                  "kill_switch": True},
                 status_code=403
             )
-    elif not wants_enabled:
-        # --- DISABLE PATH (relaxed) ---
-        # Human admin is always allowed. Otherwise we accept any enabled
-        # agent key with can_write=1. We deliberately do NOT require
-        # can_admin or can_kill — write capability is enough, because an
-        # agent that can mutate memory has the same blast radius as the
-        # kill switch itself, and we want shutdown to be *easier* than
-        # damage, not harder.
-        if not _is_human_admin():
-            if not api_key_hdr:
-                return JSONResponse(
-                    {"status": "error",
-                     "error": "Authentication required. Provide an admin key or an agent key with write permission."},
-                    status_code=401
-                )
-            agent = agent_keys.get_agent_by_key(api_key_hdr)
-            if not agent or not agent.get("enabled"):
-                return JSONResponse(
-                    {"status": "error",
-                     "error": "Invalid or disabled agent key."},
-                    status_code=401
-                )
-            # An agent can pull the brake if it has EITHER can_write OR
-            # can_kill. Both are "I'm trusted to mutate things" permissions
-            # in this product — write means "can change memory" and kill
-            # means "can shut MCP off explicitly". Accepting either keeps
-            # the legacy Dead Man's Switch toggle working alongside the
-            # newer write-permission rule from spec #686.
-            if not (agent.get("can_write") or agent.get("can_kill")):
-                return JSONResponse(
-                    {"status": "error",
-                     "error": "Only agents with write or kill permission can disable MCP. Contact the admin to grant access.",
-                     "kill_switch": True},
-                    status_code=403
-                )
     else:
-        # Already enabled and caller wants it enabled — no-op. Still make
-        # sure *someone* is authenticated so we don't accept anonymous
-        # pokes at the toggle endpoint.
-        if not _is_human_admin():
-            if not api_key_hdr:
-                return JSONResponse(
-                    {"status": "error",
-                     "error": "Authentication required."},
-                    status_code=401
-                )
-            agent = agent_keys.get_agent_by_key(api_key_hdr)
-            if not agent or not agent.get("enabled"):
-                return JSONResponse(
-                    {"status": "error",
-                     "error": "Invalid or disabled agent key."},
-                    status_code=401
-                )
+        # For disabling (or toggling while already enabled), normal admin auth
+        auth_fail = check_admin_auth(request)
+        if auth_fail:
+            return auth_fail
 
     _mcp_global_enabled = wants_enabled
     state_word = "ENABLED" if _mcp_global_enabled else "DISABLED"
     # Persist to DB so state survives restarts
     _persist_kill_switch_state(_mcp_global_enabled)
-
-    # --- Resolve the actor by NAME, not by key prefix ---
-    # The audit log used to print "agent:agent-G8O1bK2k..." which was
-    # technically traceable but useless to a human glancing at the log.
-    # Look the agent up in agent_keys and surface the friendly name —
-    # same value the constellation pill renders.
-    actor_name = "human-admin"
-    actor_color = None
-    if not _is_human_admin() and api_key_hdr:
-        agent_row = agent_keys.get_agent_by_key(api_key_hdr)
-        if agent_row:
-            actor_name = agent_row.get("agent_name") or actor_name
-            actor_color = agent_row.get("color")
-    print(f"[KILL SWITCH] Global MCP access {state_word} by {actor_name}")
-    # AUDIT: kill switch is a critical action — always log who flipped it
-    audit.log_action(agent_name=actor_name, agent_key=api_key_hdr or admin_key_hdr,
-                     action="kill_switch", detail=f"MCP access {state_word}",
-                     result_count=0, source="admin")
-
-    # --- Broadcast to the activity stream so dashboards/constellations can ---
-    # react in real time without waiting for their next poll. The event uses
-    # a distinct event type ("kill_switch") so SSE consumers can filter
-    # specifically for it.
-    kill_event = {
-        "ts": datetime.now().isoformat(),
-        "event": "kill_switch",
-        "enabled": _mcp_global_enabled,
-        "state": state_word,
-        "actor": actor_name,
-        "actor_color": actor_color,
-    }
-    _activity_buffer.append(kill_event)
-    for q in list(_activity_subscribers):
-        try:
-            q.put_nowait(kill_event)
-        except Exception:
-            pass
-
+    print(f"[KILL SWITCH] Global MCP access {state_word} by admin")
     return JSONResponse({"enabled": _mcp_global_enabled, "status": f"MCP access {state_word}"})
 
 
@@ -2966,24 +2443,24 @@ async def dashboard_api_report(request):
     # --- Trending tags: compare last 24h vs prior 7d ---
     recent_tags = {}
     rows = conn.execute(
-        "SELECT j.value as tag, COUNT(*) as cnt "
-        "FROM thoughts t, json_each(t.tags) j "
-        "WHERE t.created_at > datetime('now', '-1 day') "
-        "GROUP BY LOWER(j.value)"
+        "SELECT LOWER(j) as tag, COUNT(*) as cnt "
+        "FROM thoughts t, jsonb_array_elements_text(t.tags) j "
+        "WHERE t.created_at > NOW() - INTERVAL '1 day' "
+        "GROUP BY LOWER(j)"
     ).fetchall()
     for r in rows:
-        recent_tags[r[0].lower()] = r[1]
+        recent_tags[r["tag"]] = r["cnt"]
 
     older_tags = {}
     rows = conn.execute(
-        "SELECT j.value as tag, COUNT(*) as cnt "
-        "FROM thoughts t, json_each(t.tags) j "
-        "WHERE t.created_at > datetime('now', '-8 days') "
-        "  AND t.created_at <= datetime('now', '-1 day') "
-        "GROUP BY LOWER(j.value)"
+        "SELECT LOWER(j) as tag, COUNT(*) as cnt "
+        "FROM thoughts t, jsonb_array_elements_text(t.tags) j "
+        "WHERE t.created_at > NOW() - INTERVAL '8 days' "
+        "  AND t.created_at <= NOW() - INTERVAL '1 day' "
+        "GROUP BY LOWER(j)"
     ).fetchall()
     for r in rows:
-        older_tags[r[0].lower()] = r[1]
+        older_tags[r["tag"]] = r["cnt"]
 
     rising = []
     declining = []
@@ -3011,7 +2488,7 @@ async def dashboard_api_report(request):
         "ORDER BY access_count DESC LIMIT 10"
     ).fetchall()
     for r in rows:
-        hottest.append({"id": r[0], "preview": r[1], "access_count": r[2]})
+        hottest.append({"id": r["id"], "preview": r["preview"], "access_count": r["access_count"]})
 
     return JSONResponse({
         "trending": {"rising": rising[:15], "declining": declining[:15]},
@@ -3043,21 +2520,13 @@ async def api_auth_status(request):
 
 async def api_auth_setup(request):
     """POST /api/auth/setup — First-time account creation.
-    Only works once. Returns seed phrase (show to user ONCE, never again).
-
-    Demo-mode behavior: if STRATA_DEMO_MODE=true and the caller sends a
-    blank password, we substitute a fixed internal placeholder so the
-    hashing / seed / session plumbing all keeps working unchanged. This
-    lets the public demo render the login screen (visitors can see the
-    auth feature exists) without actually gating access."""
+    Only works once. Returns seed phrase (show to user ONCE, never again)."""
     try:
         body = await request.json()
     except Exception:
         return JSONResponse({"status": "error", "error": "Invalid JSON"}, status_code=400)
     password = body.get("password", "")
     device_name = body.get("device_name", "")
-    if DEMO_MODE and not password:
-        password = DEMO_BYPASS_PASSWORD
     if not password or len(password) < 6:
         return JSONResponse({"status": "error", "error": "Password must be at least 6 characters."})
     seed_phrase, error = auth.setup_account(password, device_name)
@@ -3074,20 +2543,13 @@ async def api_auth_setup(request):
 
 
 async def api_auth_login(request):
-    """POST /api/auth/login — Password login. Returns session token.
-
-    Demo-mode behavior: if STRATA_DEMO_MODE=true and the caller sends a
-    blank password, we substitute the demo bypass password so anyone who
-    tries to log in with empty creds gets straight in. The login screen
-    still renders so visitors can see the auth feature exists."""
+    """POST /api/auth/login — Password login. Returns session token."""
     try:
         body = await request.json()
     except Exception:
         return JSONResponse({"status": "error", "error": "Invalid JSON"}, status_code=400)
     password = body.get("password", "")
     remember_days = body.get("remember_days", 30)
-    if DEMO_MODE and not password:
-        password = DEMO_BYPASS_PASSWORD
     if not password:
         return JSONResponse({"status": "error", "error": "Password required."})
     user = auth.login(password)
@@ -3201,54 +2663,48 @@ mcp_app.routes.insert(0, Route("/health", health_check))
 mcp_app.routes.insert(1, Route("/log-conversation", log_conversation, methods=["POST"]))
 mcp_app.routes.insert(2, Route("/api/capture", api_capture, methods=["POST"]))
 mcp_app.routes.insert(3, Route("/api/search", api_search, methods=["GET", "POST"]))
-mcp_app.routes.insert(4, Route("/api/search/tag", api_search_tag, methods=["POST"]))
-mcp_app.routes.insert(5, Route("/api/stats", api_stats, methods=["GET"]))
-mcp_app.routes.insert(6, Route("/api/audit", api_audit_log, methods=["GET"]))
-mcp_app.routes.insert(7, Route("/api/startup-bundle", api_startup_bundle, methods=["GET"]))
-mcp_app.routes.insert(8, Route("/api/digest", api_digest, methods=["POST"]))
+mcp_app.routes.insert(4, Route("/api/stats", api_stats, methods=["GET"]))
+mcp_app.routes.insert(5, Route("/api/startup-bundle", api_startup_bundle, methods=["GET"]))
+mcp_app.routes.insert(6, Route("/api/digest", api_digest, methods=["POST"]))
 
 # Dashboard routes — the "human door" into Strata
 # No auth required on these — if you're on the LAN, you can use the dashboard
-mcp_app.routes.insert(8, Route("/dashboard", serve_dashboard))
-mcp_app.routes.insert(9, Route("/dashboard/api/thoughts", dashboard_api_thoughts, methods=["GET"]))
-mcp_app.routes.insert(10, Route("/dashboard/api/capture", dashboard_api_capture, methods=["POST"]))
-mcp_app.routes.insert(11, Route("/dashboard/api/update", dashboard_api_update, methods=["PUT"]))
-mcp_app.routes.insert(12, Route("/dashboard/api/search-tag", dashboard_api_search_tag, methods=["POST"]))
-mcp_app.routes.insert(13, Route("/dashboard/api/stats", dashboard_api_stats, methods=["GET"]))
-mcp_app.routes.insert(14, Route("/dashboard/api/history", dashboard_api_history, methods=["GET"]))
-mcp_app.routes.insert(15, Route("/dashboard/api/all-ids", dashboard_api_all_ids, methods=["GET"]))
-mcp_app.routes.insert(16, Route("/dashboard/api/report", dashboard_api_report, methods=["GET"]))
+mcp_app.routes.insert(7, Route("/dashboard", serve_dashboard))
+mcp_app.routes.insert(8, Route("/dashboard/api/thoughts", dashboard_api_thoughts, methods=["GET"]))
+mcp_app.routes.insert(9, Route("/dashboard/api/capture", dashboard_api_capture, methods=["POST"]))
+mcp_app.routes.insert(10, Route("/dashboard/api/update", dashboard_api_update, methods=["PUT"]))
+mcp_app.routes.insert(11, Route("/dashboard/api/stats", dashboard_api_stats, methods=["GET"]))
+mcp_app.routes.insert(12, Route("/dashboard/api/history", dashboard_api_history, methods=["GET"]))
+mcp_app.routes.insert(13, Route("/dashboard/api/all-ids", dashboard_api_all_ids, methods=["GET"]))
+mcp_app.routes.insert(14, Route("/dashboard/api/report", dashboard_api_report, methods=["GET"]))
 
 # Constellation route
-mcp_app.routes.insert(17, Route("/constellation", serve_constellation))
-mcp_app.routes.insert(18, Route("/activity/stream", activity_stream))
-mcp_app.routes.insert(19, Route("/test/activity", test_activity, methods=["GET"]))
+mcp_app.routes.insert(15, Route("/constellation", serve_constellation))
+mcp_app.routes.insert(16, Route("/activity/stream", activity_stream))
+mcp_app.routes.insert(17, Route("/test/activity", test_activity, methods=["GET"]))
 
 # Agent Key Management routes — admin only. No key = no entry.
-mcp_app.routes.insert(20, Route("/admin/agents", serve_admin_agents))
-mcp_app.routes.insert(21, Route("/admin/api/agents", admin_api_agents_list, methods=["GET"]))
-mcp_app.routes.insert(22, Route("/admin/api/agents", admin_api_agents_create, methods=["POST"]))
-mcp_app.routes.insert(23, Route("/admin/api/agents/{agent_id:int}", admin_api_agents_get, methods=["GET"]))
-mcp_app.routes.insert(24, Route("/admin/api/agents/{agent_id:int}", admin_api_agents_update, methods=["PUT"]))
-mcp_app.routes.insert(25, Route("/admin/api/agents/{agent_id:int}", admin_api_agents_delete, methods=["DELETE"]))
-mcp_app.routes.insert(26, Route("/admin/api/agents/{agent_id:int}/regenerate", admin_api_agents_regen, methods=["POST"]))
-mcp_app.routes.insert(27, Route("/admin/api/mcp-toggle", admin_api_mcp_toggle_get, methods=["GET"]))
-mcp_app.routes.insert(28, Route("/admin/api/mcp-toggle", admin_api_mcp_toggle_set, methods=["PUT"]))
-# Agent protocol — public GET so agents can fetch, admin-only PUT to update.
-mcp_app.routes.insert(29, Route("/api/protocol", api_protocol_get, methods=["GET"]))
-mcp_app.routes.insert(30, Route("/admin/api/protocol", admin_api_protocol_set, methods=["PUT"]))
+mcp_app.routes.insert(18, Route("/admin/agents", serve_admin_agents))
+mcp_app.routes.insert(19, Route("/admin/api/agents", admin_api_agents_list, methods=["GET"]))
+mcp_app.routes.insert(20, Route("/admin/api/agents", admin_api_agents_create, methods=["POST"]))
+mcp_app.routes.insert(21, Route("/admin/api/agents/{agent_id:int}", admin_api_agents_get, methods=["GET"]))
+mcp_app.routes.insert(22, Route("/admin/api/agents/{agent_id:int}", admin_api_agents_update, methods=["PUT"]))
+mcp_app.routes.insert(23, Route("/admin/api/agents/{agent_id:int}", admin_api_agents_delete, methods=["DELETE"]))
+mcp_app.routes.insert(24, Route("/admin/api/agents/{agent_id:int}/regenerate", admin_api_agents_regen, methods=["POST"]))
+mcp_app.routes.insert(25, Route("/admin/api/mcp-toggle", admin_api_mcp_toggle_get, methods=["GET"]))
+mcp_app.routes.insert(26, Route("/admin/api/mcp-toggle", admin_api_mcp_toggle_set, methods=["PUT"]))
 
 # Dashboard auth routes — human login system
-mcp_app.routes.insert(29, Route("/api/auth/status", api_auth_status, methods=["GET"]))
-mcp_app.routes.insert(30, Route("/api/auth/setup", api_auth_setup, methods=["POST"]))
-mcp_app.routes.insert(31, Route("/api/auth/login", api_auth_login, methods=["POST"]))
-mcp_app.routes.insert(32, Route("/api/auth/logout", api_auth_logout, methods=["POST"]))
-mcp_app.routes.insert(33, Route("/api/auth/recover", api_auth_recover, methods=["POST"]))
-mcp_app.routes.insert(34, Route("/api/auth/rename-device", api_auth_rename_device, methods=["POST"]))
-mcp_app.routes.insert(35, Route("/api/auth/change-password", api_auth_change_password, methods=["POST"]))
-mcp_app.routes.insert(36, Route("/api/auth/sessions", api_auth_sessions, methods=["GET"]))
-mcp_app.routes.insert(37, Route("/api/auth/revoke", api_auth_revoke, methods=["POST"]))
-mcp_app.routes.insert(38, Route("/api/auth/history", api_auth_history, methods=["GET"]))
+mcp_app.routes.insert(27, Route("/api/auth/status", api_auth_status, methods=["GET"]))
+mcp_app.routes.insert(28, Route("/api/auth/setup", api_auth_setup, methods=["POST"]))
+mcp_app.routes.insert(29, Route("/api/auth/login", api_auth_login, methods=["POST"]))
+mcp_app.routes.insert(30, Route("/api/auth/logout", api_auth_logout, methods=["POST"]))
+mcp_app.routes.insert(31, Route("/api/auth/recover", api_auth_recover, methods=["POST"]))
+mcp_app.routes.insert(32, Route("/api/auth/rename-device", api_auth_rename_device, methods=["POST"]))
+mcp_app.routes.insert(33, Route("/api/auth/change-password", api_auth_change_password, methods=["POST"]))
+mcp_app.routes.insert(34, Route("/api/auth/sessions", api_auth_sessions, methods=["GET"]))
+mcp_app.routes.insert(35, Route("/api/auth/revoke", api_auth_revoke, methods=["POST"]))
+mcp_app.routes.insert(36, Route("/api/auth/history", api_auth_history, methods=["GET"]))
 
 # Wrap the entire app with OAuth bypass — this is the ASGI entrypoint
 # The middleware intercepts /.well-known/* and /register before they
@@ -3292,6 +2748,6 @@ if __name__ == "__main__":
     print(f"[strata] REST startup:    http://0.0.0.0:{PORT}/api/startup-bundle")
     print(f"[strata] REST digest:     http://0.0.0.0:{PORT}/api/digest")
     print(f"[strata] Dashboard:       http://0.0.0.0:{PORT}/dashboard")
-    print(f"[strata] Database:        {db.DB_PATH}")
+    print(f"[strata] Database:        PostgreSQL (strata_db)")
     print(f"[strata] Conversations:   {CONVERSATIONS_DIR}")
     uvicorn.run(app, host=HOST, port=PORT)
