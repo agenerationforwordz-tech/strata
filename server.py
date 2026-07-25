@@ -1035,7 +1035,7 @@ def hybrid_search(query: str, limit: int = 10, keyword_weight: float = 0.3, thre
     db.record_access([r["id"] for r in results])
 
     sanitize_results(results)
-    log_activity("hybrid_search", query=query, thought_ids=[r.get("id") for r in response.get("results", [])], result_count=len(response.get("results", [])), source=source)
+    log_activity("hybrid_search", query=query, thought_ids=[r.get("id") for r in results], result_count=len(results), source=source)
     return json.dumps(results, indent=2, default=str)
 
 

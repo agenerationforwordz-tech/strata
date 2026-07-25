@@ -1,5 +1,10 @@
 # STRATA v2.2
 
+> **This repository is superseded by [SOLUM](https://github.com/agenerationforwordz-tech/Solum).**
+> SOLUM is the actively developed version of this project: PostgreSQL + pgvector instead of SQLite,
+> a larger tool set, and numerous fixes not present here. New users should start with SOLUM.
+> This repository remains available for reference.
+
 Self-hosted AI memory server. Your thoughts, your hardware, your data.
 
 ## Why Strata?
